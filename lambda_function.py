@@ -126,6 +126,7 @@ def search_artist(cursor, artist_name):
     if len(db_result) > 0: # 이미 있는 데이터면, DB 데이터를 저장하고 나감
         print("이미 있는 데이터 가져오기")
         globals()['raw'] = db_result
+        # global raw 하고 raw = db_result 하고 싶은데, 함수를 실행하기도 전에, 할당 전에 사용했다는 오류 발생
         return
 
     print("새로운 데이터 저장")
@@ -221,17 +222,14 @@ def lambda_handler(event, context):
     logger.info(request_body)
     params = request_body['action']['params'] # 오픈빌더는 action > params 안에 input 데이터가 들어있다.
     if params:
-        print("parameter 자동 생성")
+        for key in params.keys():
+            test = params[key] # 이건 이름만 인식하므로, \n 제거 안해도 됨
+        print("인식한 artist name:", test)
 
     # symptom = params['symptom'] # action > params 안에 symptom 파라미터의 값을 가져와 test 에 넣는다.
+    # 메시지는 뒤에 \n이 붙어서, 제거
     artist_name = request_body['userRequest']['utterance'].rstrip("\n")
-
-    # params 처리: request에서 제대로 가져오지 못한 상태
-    # if params['group']:
-    #     artist_name = params['group'].rstrip("\n") # 메시지는 뒤에 \n이 붙어서 제거
-    # elif params['solo']:
-    #     artist_name = params['solo'].rstrip("\n") # 메시지는 뒤에 \n이 붙어서 제거
-
+    
 
 	# input 으로 받아온 데이터로 원하는 결과를 생성하는 코드 작성
     # url을 먼저 가져와서 있으면 아티스트 정보를 보여주고 장르로 넘어가고, 없으면 에러 처리
@@ -315,11 +313,6 @@ def lambda_handler(event, context):
                                 "label": "YouTube에서 듣기", # label은 최대 8자
                                 "webLinkUrl": youtube_url
                             },
-                            # {
-                            #     "action": "webLink",
-                            #     "label": "Spotify에서 듣기", # label은 최대 8자
-                            #     "webLinkUrl": url
-                            # },
                         ]
                     }
                 },
@@ -332,6 +325,7 @@ def lambda_handler(event, context):
 
     logger.info(result)
 
+    # 메시지 리턴
     return {
         'statusCode':200,
         'body': json.dumps(result),
