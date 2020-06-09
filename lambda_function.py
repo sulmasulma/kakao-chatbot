@@ -5,14 +5,14 @@ import boto3
 import logging, pickle
 import requests
 import pymysql
-# import kakao_bot # 같은 폴더 안에 있기 때문에 import 가능
+# import kakao_bot
 import json, base64
 
 logger = logging.getLogger() # cloudwatch 로그 보기?
 logger.setLevel(logging.INFO)
 raw = () # db 결과 저장하는 변수
 
-# mysql 정보
+# AWS mysql 정보
 with open('dbinfo.pickle', 'rb') as f:
     data = pickle.load(f)
 
@@ -30,6 +30,7 @@ except:
 # bot = fb_bot.Bot(PAGE_TOKEN)
 
 # main 함수를 호출하는 것이 아니므로, 다른 함수들은 lambda_handler보다 위에 써야 함
+# API 쿼리 위한 header
 def get_headers(client_id, client_secret):
 
     endpoint = "https://accounts.spotify.com/api/token"
@@ -53,8 +54,8 @@ def get_headers(client_id, client_secret):
 
     return headers
 
+# MySQL에 데이터 삽입
 def insert_row(cursor, data, table):
-    # 여기 한 줄을 띄워줘야 함수가 접어짐
 
     # data의 개수에 맞게 넣어 줌
     placeholders = ', '.join(['%s'] * len(data)) # 형태: '%s, %s, %s, ...'
@@ -75,6 +76,7 @@ def insert_row(cursor, data, table):
     print(data.values())
 
 # 다른 람다를 호출(invoke)하는 함수. payload 부분이 event로 들어가는 부분
+# IAM을 통해 이 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     lambda_client = boto3.client('lambda')
@@ -89,6 +91,7 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     return invoke_response
 
+# 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
 def search_artist(cursor, artist_name):
 
     headers = get_headers(client_id, client_secret) # id, secret은 globals()로 생성
@@ -224,12 +227,11 @@ def lambda_handler(event, context):
     if params:
         for key in params.keys():
             test = params[key] # 이건 이름만 인식하므로, \n 제거 안해도 됨
-        print("인식한 artist name:", test)
+        print("인식한 artist name:", test) # 인식했을 때만 출력해 보기. 아직 실제 사용하지는 않음
 
     # symptom = params['symptom'] # action > params 안에 symptom 파라미터의 값을 가져와 test 에 넣는다.
     # 메시지는 뒤에 \n이 붙어서, 제거
     artist_name = request_body['userRequest']['utterance'].rstrip("\n")
-    
 
 	# input 으로 받아온 데이터로 원하는 결과를 생성하는 코드 작성
     # url을 먼저 가져와서 있으면 아티스트 정보를 보여주고 장르로 넘어가고, 없으면 에러 처리
@@ -269,7 +271,7 @@ def lambda_handler(event, context):
     db_artist_name, image_url = raw[0]
     temp_artist_name = db_artist_name # 이 변수를 아티스트 이름에 ' 있을 때만 할당할 수는 없나?
 
-    # sql 쿼리를 위해, 이름에 '가 들어가면 ''로 수정하여 쿼리 가능하게 함
+    # sql 쿼리를 위해, Girls' Generation같이 이름에 '가 들어가면 ''로 수정하여 쿼리 가능하게 함
     if "'" in db_artist_name:
         db_artist_name = db_artist_name.replace("'", "''")
     
