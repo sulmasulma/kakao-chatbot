@@ -2,10 +2,8 @@
 import sys
 sys.path.append('./libs') # libs 안에 있는 것 사용하도록 configure
 import boto3
-import logging, pickle
-import requests
-import pymysql
-# import kakao_bot
+from boto3.dynamodb.conditions import Key
+import logging, pickle, requests, pymysql
 import json, base64
 
 logger = logging.getLogger() # cloudwatch 로그 보기?
@@ -25,6 +23,13 @@ try:
     cursor = conn.cursor()
 except:
     logging.error("could not connect to rds")
+    sys.exit(1)
+
+# connect DynamoDB
+try:
+    dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2', endpoint_url='http://dynamodb.ap-northeast-2.amazonaws.com')
+except:
+    logging.error('could not connect to dynamodb')
     sys.exit(1)
 
 # bot = fb_bot.Bot(PAGE_TOKEN)
@@ -91,6 +96,35 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     return invoke_response
 
+# DynamoDB에서 top_tracks 데이터 호출하는 함수
+def find_top_tracks(artist_id):
+
+    table = dynamodb.Table('top_tracks')
+    response = table.query(
+        KeyConditionExpression=Key('artist_id').eq(artist_id)
+    )
+
+    items = []
+
+    for ele in response['Items'][:3]:
+        name = ele['name']
+        youtube_url = 'https://www.youtube.com/results?search_query={}'.format(name.replace(' ', '+'))
+        temp_dic = {
+            "title": name,
+            "description": ele['album']['name'],
+            "imageUrl": ele['album']['images'][1]['url'],
+            "link": {
+                "web": youtube_url
+            }
+        }
+
+        items.append(temp_dic)
+    
+    print(items)
+
+    return items
+
+
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
 def search_artist(cursor, artist_name):
 
@@ -121,7 +155,7 @@ def search_artist(cursor, artist_name):
     # logger.info(artist_raw)
 
     # 검색 결과가 DB에 있는지 테스트함. 이미 있으면 나가야 함
-    query = 'select name, image_url from artists where name = "{}"'.format(artist_raw['name'])
+    query = 'select id, name, image_url from artists where name = "{}"'.format(artist_raw['name'])
     logger.info(query) # 수정된 쿼리
     cursor.execute(query)
     db_result = cursor.fetchall()
@@ -168,14 +202,13 @@ def search_artist(cursor, artist_name):
     insert_row(cursor, artist, 'artists')
     conn.commit()
     
-    # 이 람다 함수에 권한 주어야 함:
-    # lambda:InvokeFunction on resource: arn:aws:lambda:ap-northeast-2:173725148175:function:top-tracks
+    # DynamoDB의 top-tracks 테이블 insert
     r = invoke_lambda('top-tracks', payload={'artist_id': artist_raw['id']})
     
     temp = []
     temp_text = {
         "simpleText": {
-            "text": "{}에 대해 알고 싶으신가요?".format(artist_raw['name'])
+            "text": "{}의 노래를 들어보세요.".format(artist_raw['name'])
         }
     }
     temp.append(temp_text)
@@ -189,26 +222,46 @@ def search_artist(cursor, artist_name):
 
     youtube_url = 'https://www.youtube.com/results?search_query={}'.format(artist_raw['name'].replace(' ', '+'))
 
-    # basic card 내용을 반환하여, lambda_handeler 함수에서 응답에 append 할 수 있도록 하기
-    # db에 저장한걸 또 cursor로 가져오지 말고, 여기서는 api 결과를 사용
-    temp_card = {
-        "basicCard": {
-            "title": artist_raw['name'],
-            "description": ", ".join(artist_raw['genres']), # 여기에 장르 담기
-            "thumbnail": {
+    # # basic card 내용을 반환하여, lambda_handeler 함수에서 응답에 append 할 수 있도록 하기
+    # # db에 저장한걸 또 cursor로 가져오지 말고, 여기서는 api 결과를 사용
+    # temp_card = {
+    #     "basicCard": {
+    #         "title": artist_raw['name'],
+    #         "description": ", ".join(artist_raw['genres']), # 여기에 장르 담기
+    #         "thumbnail": {
+    #             "imageUrl": temp_artist_url
+    #         },
+    #         "buttons": [
+    #             {
+    #                 "action": "webLink",
+    #                 "label": "YouTube에서 듣기", # label은 최대 8자
+    #                 "webLinkUrl": youtube_url
+    #             },
+    #         ]
+    #     }
+    # }
+
+    # temp.append(temp_card)
+
+    temp_list = {
+        "listCard": {
+            "header": {
+                "title": artist_raw['name'],
                 "imageUrl": temp_artist_url
             },
+            "items": find_top_tracks(artist_raw['id']),
             "buttons": [
                 {
-                    "action": "webLink",
-                    "label": "YouTube에서 듣기", # label은 최대 8자
-                    "webLinkUrl": youtube_url
-                },
+                "label": "다른 노래도 보기",
+                "action": "webLink",
+                "webLinkUrl": youtube_url
+                }
             ]
         }
     }
 
-    temp.append(temp_card)
+    temp.append(temp_list)
+
     return temp
     
 
@@ -235,14 +288,12 @@ def lambda_handler(event, context):
 
 	# input 으로 받아온 데이터로 원하는 결과를 생성하는 코드 작성
     # url을 먼저 가져와서 있으면 아티스트 정보를 보여주고 장르로 넘어가고, 없으면 에러 처리
-    query = 'select name, image_url from artists where name = "{}"'.format(artist_name) # 원래는 url 칼럼도 담았었는데, spotify link 사용할거 아니므로 뺌
+    query = 'select id, name, image_url from artists where name = "{}"'.format(artist_name) # 원래는 url 칼럼도 담았었는데, spotify link 사용할거 아니므로 뺌
     logger.info(query)
     cursor.execute(query)
     globals()['raw'] = cursor.fetchall()
 
     # 아티스트가 DB에 없을 경우 DB에 추가하는 작업
-    # 추가하고 나서 다시 아티스트 내용을 답해주어야 함!! resut에 append 하기?
-    # 한글로 웬만한 인물은 엔티티 등록. 이걸 영어로 번역해서 작업?
     if len(raw) == 0:
         search_result = search_artist(cursor, artist_name) # 새로운 데이터 db에 저장할 때 안내 메시지 띄움
 
@@ -268,7 +319,7 @@ def lambda_handler(event, context):
         # sys.exit(0)
     
     logger.info(globals()['raw'])
-    db_artist_name, image_url = raw[0]
+    artist_id, db_artist_name, image_url = raw[0]
     temp_artist_name = db_artist_name # 이 변수를 아티스트 이름에 ' 있을 때만 할당할 수는 없나?
 
     # sql 쿼리를 위해, Girls' Generation같이 이름에 '가 들어가면 ''로 수정하여 쿼리 가능하게 함
@@ -288,6 +339,11 @@ def lambda_handler(event, context):
     for (genre, ) in cursor.fetchall():
         genres.append(genre)
 
+    # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 확인하고 없으면 데이터 삽입
+    temp_top_tracks = find_top_tracks(artist_id)
+    if not temp_top_tracks:
+        invoke_lambda('top-tracks', payload={'artist_id': artist_id})
+
     # 최종 메시지
     result = {
         "version": "2.0",
@@ -296,30 +352,48 @@ def lambda_handler(event, context):
                 # 1. SimpleText
                 {
                     "simpleText": {
-                        "text": "{}에 대해 알고 싶으신가요?".format(temp_artist_name)
+                        "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
                     }
                 },
 
                 # 2. BasicCard: image_url, url 등 보여주는 카드
                 # YouTube에서 듣기
+                # {
+                #     "basicCard": {
+                #         "title": temp_artist_name,
+                #         "description": ", ".join(genres), # 여기에 장르 담기
+                #         "thumbnail": {
+                #             "imageUrl": image_url
+                #         },
+                #         "buttons": [
+                #             {
+                #                 "action": "webLink",
+                #                 "label": "YouTube에서 듣기", # label은 최대 8자
+                #                 "webLinkUrl": youtube_url
+                #             },
+                #         ]
+                #     }
+                # },
+
+                # 3. ListCard
                 {
-                    "basicCard": {
-                        "title": temp_artist_name,
-                        "description": ", ".join(genres), # 여기에 장르 담기
-                        "thumbnail": {
+                    "listCard": {
+                        "header": {
+                            "title": temp_artist_name,
                             "imageUrl": image_url
                         },
+                        "items": find_top_tracks(artist_id),
                         "buttons": [
                             {
-                                "action": "webLink",
-                                "label": "YouTube에서 듣기", # label은 최대 8자
-                                "webLinkUrl": youtube_url
-                            },
+                            "label": "다른 노래도 보기",
+                            "action": "webLink",
+                            "webLinkUrl": youtube_url
+                            }
                         ]
                     }
                 },
 
-                # 3.
+                # 4. 
 
             ]
         }
