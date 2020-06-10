@@ -96,8 +96,8 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     return invoke_response
 
-# DynamoDB에서 top_tracks 데이터 호출하는 함수
-def find_top_tracks(artist_id):
+# DynamoDB에서 top_tracks 데이터 호출하는 함수. ListCard 형태에 맞게 리턴
+def get_top_tracks(artist_id):
 
     table = dynamodb.Table('top_tracks')
     response = table.query(
@@ -249,7 +249,7 @@ def search_artist(cursor, artist_name):
                 "title": artist_raw['name'],
                 "imageUrl": temp_artist_url
             },
-            "items": find_top_tracks(artist_raw['id']),
+            "items": get_top_tracks(artist_raw['id']),
             "buttons": [
                 {
                 "label": "다른 노래도 보기",
@@ -339,8 +339,9 @@ def lambda_handler(event, context):
     for (genre, ) in cursor.fetchall():
         genres.append(genre)
 
-    # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 확인하고 없으면 데이터 삽입
-    temp_top_tracks = find_top_tracks(artist_id)
+    # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 처음에 MySQL에 추가할 때 같이 삽입이 되지 않은 듯.
+    # 확인하고 없으면 데이터 삽입
+    temp_top_tracks = get_top_tracks(artist_id)
     if not temp_top_tracks:
         invoke_lambda('top-tracks', payload={'artist_id': artist_id})
 
@@ -382,7 +383,7 @@ def lambda_handler(event, context):
                             "title": temp_artist_name,
                             "imageUrl": image_url
                         },
-                        "items": find_top_tracks(artist_id),
+                        "items": get_top_tracks(artist_id),
                         "buttons": [
                             {
                             "label": "다른 노래도 보기",
