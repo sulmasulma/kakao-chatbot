@@ -97,7 +97,7 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
     return invoke_response
 
 # DynamoDB에서 top_tracks 데이터 호출하는 함수. ListCard 형태에 맞게 리턴
-def get_top_tracks(artist_id):
+def get_top_tracks_db(artist_id):
 
     table = dynamodb.Table('top_tracks')
     response = table.query(
@@ -122,6 +122,32 @@ def get_top_tracks(artist_id):
     
     print(items)
 
+    return items
+
+# API에서 top_tracks 호출하는 함수. ListCard 형태에 맞게 리턴
+def get_top_tracks_api(artist_id):
+    URL = "https://api.spotify.com/v1/artists/{}/top-tracks".format(artist_id)
+    params = {
+        'country': 'US'
+    }
+
+    headers = get_headers(client_id, client_secret)
+    r = requests.get(URL, params=params, headers=headers)
+    raw = json.loads(r.text)
+
+    items = []
+    for ele in raw['tracks'][:3]:
+        name = ele['name']
+        youtube_url = 'https://www.youtube.com/results?search_query={}'.format(name.replace(' ', '+'))
+        temp_dic = {
+            "title": name,
+            "description": ele['album']['name'],
+            "imageUrl": ele['album']['images'][1]['url'],
+            "link": {
+                "web": youtube_url
+            }
+        }
+        items.append(temp_dic)
     return items
 
 
@@ -190,7 +216,7 @@ def search_artist(cursor, artist_name):
             'image_url': temp_artist_url
         }
     )
-
+    
     
     # 아티스트가 있는데 장르가 없는 경우도 있음(예: Andrew W.K.). 이 경우는 장르는 따로 처리하지 않음
     # 장르가 있을 경우, artist_genres 테이블 먼저 insert
@@ -249,7 +275,7 @@ def search_artist(cursor, artist_name):
                 "title": artist_raw['name'],
                 "imageUrl": temp_artist_url
             },
-            "items": get_top_tracks(artist_raw['id']),
+            "items": get_top_tracks_api(artist_raw['id']),
             "buttons": [
                 {
                 "label": "다른 노래도 보기",
@@ -279,8 +305,8 @@ def lambda_handler(event, context):
     params = request_body['action']['params'] # 오픈빌더는 action > params 안에 input 데이터가 들어있다.
     if params:
         for key in params.keys():
-            test = params[key] # 이건 이름만 인식하므로, \n 제거 안해도 됨
-        print("인식한 artist name:", test) # 인식했을 때만 출력해 보기. 아직 실제 사용하지는 않음
+            # test = params[key] # 이건 이름만 인식하므로, \n 제거 안해도 됨
+            print("인식한 artist name: {} ({})".format(params[key], key)) # 인식했을 때만 출력해 보기. 아직 실제 사용하지는 않음
 
     # symptom = params['symptom'] # action > params 안에 symptom 파라미터의 값을 가져와 test 에 넣는다.
     # 메시지는 뒤에 \n이 붙어서, 제거
@@ -341,9 +367,10 @@ def lambda_handler(event, context):
 
     # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 처음에 MySQL에 추가할 때 같이 삽입이 되지 않은 듯.
     # 확인하고 없으면 데이터 삽입
-    temp_top_tracks = get_top_tracks(artist_id)
+    temp_top_tracks = get_top_tracks_db(artist_id)
     if not temp_top_tracks:
-        invoke_lambda('top-tracks', payload={'artist_id': artist_id})
+        temp_top_tracks = get_top_tracks_api(artist_id)
+        invoke_lambda('top-tracks', payload={'artist_id': artist_id}) # 비동기?
 
     # 최종 메시지
     result = {
@@ -383,7 +410,7 @@ def lambda_handler(event, context):
                             "title": temp_artist_name,
                             "imageUrl": image_url
                         },
-                        "items": get_top_tracks(artist_id),
+                        "items": temp_top_tracks,
                         "buttons": [
                             {
                             "label": "다른 노래도 보기",
