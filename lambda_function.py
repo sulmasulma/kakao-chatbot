@@ -1,14 +1,15 @@
 # 챗봇 메시징 코드
 import sys
 sys.path.append('./libs') # libs 안에 있는 것 사용하도록 configure
-import boto3
+import boto3, pymysql
 from boto3.dynamodb.conditions import Key
-import logging, pickle, requests, pymysql
-import json, base64
+import logging, pickle, requests, json, base64
+from urllib import parse
 
 logger = logging.getLogger() # cloudwatch 로그 보기?
 logger.setLevel(logging.INFO)
 raw = () # db 결과 저장하는 변수
+base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
 # AWS mysql 정보
 with open('dbinfo.pickle', 'rb') as f:
@@ -97,7 +98,7 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
     return invoke_response
 
 # DynamoDB에서 top_tracks 데이터 호출하는 함수. ListCard 형태에 맞게 리턴
-def get_top_tracks_db(artist_id):
+def get_top_tracks_db(artist_id, artist_name):
 
     table = dynamodb.Table('top_tracks')
     response = table.query(
@@ -108,7 +109,14 @@ def get_top_tracks_db(artist_id):
 
     for ele in response['Items'][:3]:
         name = ele['name']
-        youtube_url = 'https://www.youtube.com/results?search_query={}'.format(name.replace(' ', '+'))
+        query = {
+            'search_query': '{} {}'.format(artist_name, name)
+        }
+
+        youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
+        # youtube_url = 'https://www.youtube.com/results?search_query={}+{}'.format(
+        #     artist_name.replace(' ', '+'), name.replace(' ', '+'))
+        
         temp_dic = {
             "title": name,
             "description": ele['album']['name'],
@@ -125,7 +133,7 @@ def get_top_tracks_db(artist_id):
     return items
 
 # API에서 top_tracks 호출하는 함수. ListCard 형태에 맞게 리턴
-def get_top_tracks_api(artist_id):
+def get_top_tracks_api(artist_id, artist_name):
     URL = "https://api.spotify.com/v1/artists/{}/top-tracks".format(artist_id)
     params = {
         'country': 'US'
@@ -136,9 +144,18 @@ def get_top_tracks_api(artist_id):
     raw = json.loads(r.text)
 
     items = []
+
+    # top_tracks가 있을 때에만, 즉 raw['tracks']가 있을 때에만 루프가 실행됨
     for ele in raw['tracks'][:3]:
         name = ele['name']
-        youtube_url = 'https://www.youtube.com/results?search_query={}'.format(name.replace(' ', '+'))
+        query = {
+            'search_query': '{} {}'.format(artist_name, name)
+        }
+
+        youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
+        # youtube_url = 'https://www.youtube.com/results?search_query={}+{}'.format(
+        #     artist_name.replace(' ', '+'), name.replace(' ', '+'))
+        
         temp_dic = {
             "title": name,
             "description": ele['album']['name'],
@@ -228,8 +245,6 @@ def search_artist(cursor, artist_name):
     insert_row(cursor, artist, 'artists')
     conn.commit()
     
-    # DynamoDB의 top-tracks 테이블 insert
-    r = invoke_lambda('top-tracks', payload={'artist_id': artist_raw['id']})
     
     temp = []
     temp_text = {
@@ -246,9 +261,7 @@ def search_artist(cursor, artist_name):
     }
     temp.append(temp_text)
 
-    youtube_url = 'https://www.youtube.com/results?search_query={}'.format(artist_raw['name'].replace(' ', '+'))
-
-    # # basic card 내용을 반환하여, lambda_handeler 함수에서 응답에 append 할 수 있도록 하기
+    # # basic card 내용을 반환하여, lambda_handler 함수에서 응답에 append 할 수 있도록 하기
     # # db에 저장한걸 또 cursor로 가져오지 말고, 여기서는 api 결과를 사용
     # temp_card = {
     #     "basicCard": {
@@ -268,33 +281,51 @@ def search_artist(cursor, artist_name):
     # }
 
     # temp.append(temp_card)
+ 
+    temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
+    
+    if temp_top_tracks:
+        # top_tracks 데이터가 있을 경우에만 DynamoDB의 top-tracks 테이블에 insert
+        resp = invoke_lambda('top-tracks', payload={
+            'artist_id': artist_raw['id'],
+            'data': temp_top_tracks
+        })
+        print("top tracks INSERT:", resp)
 
-    temp_list = {
-        "listCard": {
-            "header": {
-                "title": artist_raw['name'],
-                "imageUrl": temp_artist_url
-            },
-            "items": get_top_tracks_api(artist_raw['id']),
-            "buttons": [
-                {
-                "label": "다른 노래도 보기",
-                "action": "webLink",
-                "webLinkUrl": youtube_url
-                }
-            ]
+        query = {
+            'search_query': artist_raw['name']
         }
-    }
+        youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
+        # youtube_url = 'https://www.youtube.com/results?search_query={}'.format(artist_raw['name'].replace(' ', '+'))
+        temp_list = {
+            "listCard": {
+                "header": {
+                    "title": artist_raw['name'],
+                    "imageUrl": temp_artist_url
+                },
+                "items": temp_top_tracks,
+                "buttons": [
+                    {
+                    "label": "다른 노래도 보기",
+                    "action": "webLink",
+                    "webLinkUrl": youtube_url
+                    }
+                ]
+            }
+        }
 
-    temp.append(temp_list)
+        temp.append(temp_list)
+
+    else:
+        temp_text = {
+            "simpleText": {
+                "text": "{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(artist_raw['name'])
+            }
+        }
+        temp.append(temp_text)
+
 
     return temp
-    
-
-    # 검색 결과는 나왔는데, 검색어와 검색 결과가 매칭이 안 될 경우
-    # 검색어가 아티스트가 아닐 경우도 있고, 여러 경우를 생각해 봐야 함 * 검색 결과를 raw['artists']로 아티스트만 제한했음
-    # else:
-    #     return '올바른 검색어가 아닙니다.'
 
 
 
@@ -352,78 +383,114 @@ def lambda_handler(event, context):
     if "'" in db_artist_name:
         db_artist_name = db_artist_name.replace("'", "''")
     
-    youtube_url = 'https://www.youtube.com/results?search_query={}'.format(temp_artist_name.replace(' ', '+'))
+    query = {
+        'search_query': temp_artist_name
+    }
+    youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
+    # youtube_url = 'https://www.youtube.com/results?search_query={}'.format(temp_artist_name.replace(' ', '+'))
 
-    # 장르 담기
-    query = """
-        select t2.genre from artists t1 join artist_genres t2 on t2.artist_id = t1.id
-        where t1.name = '{}'
-    """.format(db_artist_name)
-    cursor.execute(query)
+    # 장르 가져오기
+    # query = """
+    #     select t2.genre from artists t1 join artist_genres t2 on t2.artist_id = t1.id
+    #     where t1.name = '{}'
+    # """.format(db_artist_name)
+    # cursor.execute(query)
 
-    genres = []
-    for (genre, ) in cursor.fetchall():
-        genres.append(genre)
+    # genres = []
+    # for (genre, ) in cursor.fetchall():
+    #     genres.append(genre)
+
+    # 메시지 결과 저장하는 변수
+    temp = []
 
     # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 처음에 MySQL에 추가할 때 같이 삽입이 되지 않은 듯.
     # 확인하고 없으면 데이터 삽입
-    temp_top_tracks = get_top_tracks_db(artist_id)
+    temp_top_tracks = get_top_tracks_db(artist_id, temp_artist_name)
     if not temp_top_tracks:
-        temp_top_tracks = get_top_tracks_api(artist_id)
-        invoke_lambda('top-tracks', payload={'artist_id': artist_id}) # 비동기?
+        temp_top_tracks = get_top_tracks_api(artist_id, temp_artist_name)
+
+        # 마이크로닷: DB에도 없고 API에도 없음. 안내 메시지 보내고 리턴
+        if not temp_top_tracks:
+            temp_text = {
+                "simpleText": {
+                    "text": "{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(temp_artist_name)
+                }
+            }
+            temp.append(temp_text)
+
+            result = {
+                "version": "2.0",
+                "template": {
+                    "outputs": temp
+                }
+            }
+
+            return {
+                'statusCode': 200,
+                'body': json.dumps(result),
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                }
+            }
+
+        # api 결과가 있으면 DB 삽입
+        resp = invoke_lambda('top-tracks', payload={
+            'artist_id': artist_id,
+            'data': temp_top_tracks
+        })
+        print("top tracks INSERT:", resp)
+
+    # 1. SimpleText
+    temp_text = {
+        "simpleText": {
+            "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
+        }
+    }
+    temp.append(temp_text)
+
+    # 2. BasicCard: image_url, url 등 보여주는 카드
+    # YouTube에서 듣기
+    # {
+    #     "basicCard": {
+    #         "title": temp_artist_name,
+    #         "description": ", ".join(genres), # 여기에 장르 담기
+    #         "thumbnail": {
+    #             "imageUrl": image_url
+    #         },
+    #         "buttons": [
+    #             {
+    #                 "action": "webLink",
+    #                 "label": "YouTube에서 듣기", # label은 최대 8자
+    #                 "webLinkUrl": youtube_url
+    #             },
+    #         ]
+    #     }
+    # },
+
+    # 2. ListCard
+    temp_list = {
+        "listCard": {
+            "header": {
+                "title": temp_artist_name,
+                "imageUrl": image_url
+            },
+            "items": temp_top_tracks,
+            "buttons": [
+                {
+                "label": "다른 노래도 보기",
+                "action": "webLink",
+                "webLinkUrl": youtube_url
+                }
+            ]
+        }
+    }
+    temp.append(temp_list)
 
     # 최종 메시지
     result = {
         "version": "2.0",
         "template": {
-            "outputs": [
-                # 1. SimpleText
-                {
-                    "simpleText": {
-                        "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
-                    }
-                },
-
-                # 2. BasicCard: image_url, url 등 보여주는 카드
-                # YouTube에서 듣기
-                # {
-                #     "basicCard": {
-                #         "title": temp_artist_name,
-                #         "description": ", ".join(genres), # 여기에 장르 담기
-                #         "thumbnail": {
-                #             "imageUrl": image_url
-                #         },
-                #         "buttons": [
-                #             {
-                #                 "action": "webLink",
-                #                 "label": "YouTube에서 듣기", # label은 최대 8자
-                #                 "webLinkUrl": youtube_url
-                #             },
-                #         ]
-                #     }
-                # },
-
-                # 3. ListCard
-                {
-                    "listCard": {
-                        "header": {
-                            "title": temp_artist_name,
-                            "imageUrl": image_url
-                        },
-                        "items": temp_top_tracks,
-                        "buttons": [
-                            {
-                            "label": "다른 노래도 보기",
-                            "action": "webLink",
-                            "webLinkUrl": youtube_url
-                            }
-                        ]
-                    }
-                },
-
-                # 4. 
-
-            ]
+            "outputs": temp
         }
     }
 
