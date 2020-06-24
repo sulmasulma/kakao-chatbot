@@ -11,7 +11,8 @@ logger.setLevel(logging.INFO)
 raw = () # db 결과 저장하는 변수
 base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
-# AWS mysql 정보
+# AWS mysql 정보 -> 환경 변수로?
+# 환경변수 사용법 예시: import os 하고 region = os.environ['AWS_REGION']
 with open('dbinfo.pickle', 'rb') as f:
     data = pickle.load(f)
 
@@ -69,7 +70,7 @@ def insert_row(cursor, data, table):
     key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
     # 반복적인 인자들을 %s에 넣어줌
     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
-    print(sql) # 아래와 같은 형태 -> %s에 넣을 값은 163행과 같이 data.values를 반복
+    # print(sql) # 아래와 같은 형태 -> %s에 넣을 값은 163행과 같이 data.values를 반복
     """
     INSERT INTO artists ( id, name, followers, popularity, url, image_url )
     VALUES ( %s, %s, %s, %s, %s, %s )
@@ -142,6 +143,7 @@ def get_top_tracks_api(artist_id, artist_name):
     headers = get_headers(client_id, client_secret)
     r = requests.get(URL, params=params, headers=headers)
     raw = json.loads(r.text)
+    globals()['data_for_dynamodb'] = raw
 
     items = []
 
@@ -165,8 +167,8 @@ def get_top_tracks_api(artist_id, artist_name):
             }
         }
         items.append(temp_dic)
-    return items
 
+    return items
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
 def search_artist(cursor, artist_name):
@@ -284,12 +286,14 @@ def search_artist(cursor, artist_name):
  
     temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
     
+    # top_tracks 데이터가 있을 경우에만 DynamoDB의 top-tracks 테이블에 insert
     if temp_top_tracks:
-        # top_tracks 데이터가 있을 경우에만 DynamoDB의 top-tracks 테이블에 insert
         resp = invoke_lambda('top-tracks', payload={
+            'artist_name': artist_raw['name'], # 로그 용도로 이름까지 보냄
             'artist_id': artist_raw['id'],
-            'data': temp_top_tracks
+            'data': globals()['data_for_dynamodb']
         })
+        # 응답 결과: 해당 람다에서 리턴한 값이 아니라, 아래와 같이 찍힘
         print("top tracks INSERT:", resp)
 
         query = {
@@ -435,8 +439,9 @@ def lambda_handler(event, context):
 
         # api 결과가 있으면 DB 삽입
         resp = invoke_lambda('top-tracks', payload={
+            'artist_name': db_artist_name, # 로그 용도로 이름까지 보냄
             'artist_id': artist_id,
-            'data': temp_top_tracks
+            'data': globals()['data_for_dynamodb']
         })
         print("top tracks INSERT:", resp)
 
