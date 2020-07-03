@@ -1,2 +1,3 @@
 pymysql
-boto3
+requests
+googletrans
