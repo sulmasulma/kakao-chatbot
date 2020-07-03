@@ -5,6 +5,7 @@ import boto3, pymysql
 from boto3.dynamodb.conditions import Key
 import logging, pickle, requests, json, base64
 from urllib import parse
+from googletrans import Translator
 
 logger = logging.getLogger() # cloudwatch 로그 보기?
 logger.setLevel(logging.INFO)
@@ -80,10 +81,11 @@ def insert_row(cursor, data, table):
     cursor.execute(sql, list(data.values())) # 이 2번 반복을 줄일 수 없나? values(id) 이렇게
     # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
     # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯.
-    print(data.values())
+    # print(data.values())
 
 # 다른 람다를 호출(invoke)하는 함수. payload 부분이 event로 들어가는 부분
 # IAM을 통해 이 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
+# invocation_type = 'Event' -> 비동기!!
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     lambda_client = boto3.client('lambda')
@@ -95,6 +97,17 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     if invoke_response['StatusCode'] not in [200, 202, 204]:
         logging.error('ERROR: Invoking lambda function: {} failed'.format(fxn_name))
+    # invoke_response 형식 예시. StatusCode가 202 -> 비동기 응답인 것으로 보임
+    # {'ResponseMetadata': {
+    #     'RequestId': '9c43412b-4eae-4334-9072-846d296430c7', 
+    #     'HTTPStatusCode': 202, 
+    #     'HTTPHeaders': {
+    #         'date': 'Fri, 12 Jun 2020 14:56:44 GMT', 'content-length': '0', 'connection': 'keep-alive', 'x-amzn-requestid': '9c43412b-4eae-4334-9072-846d296430c7', 'x-amzn-remapped-content-length': '0', 
+    #         'x-amzn-trace-id': 'root=1-5ee397ac-b822719b1f62900344f882ed;sampled=0'}, 
+    #     'RetryAttempts': 0}, 
+    #     'StatusCode': 202, 
+    #     'Payload': <botocore.response.StreamingBody object at 0x7fbe6f4bd350>
+    # }
 
     return invoke_response
 
@@ -170,6 +183,12 @@ def get_top_tracks_api(artist_id, artist_name):
 
     return items
 
+# 해외 아티스트를 한국어로 검색했을 때 결과가 나오지 않을 경우, 영어로 번역해서 다시 검색 시도
+def translate_artist(korean):
+    translator = Translator() # 번역기
+    return translator.translate(korean, dest="en").text
+
+
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
 def search_artist(cursor, artist_name):
 
@@ -187,14 +206,24 @@ def search_artist(cursor, artist_name):
 
     # 검색 결과가 없을 경우, ['artists']['items']가 empty list - []가 됨
     # 검색 단어와 저장 단어가 다를 경우, DB에는 있음. 이 데이터를 주면 됨
-    # 대체 단어(alternative, 한글 등)를 저장해야 하나?
     if raw['artists']['items'] == []:
-        print("없는 아티스트")
-        return [{
-            "simpleText": {
-                "text": '아티스트를 찾을 수 없습니다. 다시 입력해 주세요.'
-            }
-        }]
+        # 번역해서 다시 검색해 보고, 있으면 넘어가기. 그래도 없으면 리턴
+        params = {
+            "q": translate_artist(artist_name), # 여기를 번역 결과로!! 함수 만들어서
+            "type": "artist",
+            "limit": "1"
+        }
+
+        r = requests.get("https://api.spotify.com/v1/search", params=params, headers=headers)
+        raw = json.loads(r.text)
+
+        if raw['artists']['items'] == []:
+            print("없는 아티스트")
+            return [{
+                "simpleText": {
+                    "text": '아티스트를 찾을 수 없습니다. 다시 입력해 주세요.'
+                }
+            }]
 
     artist_raw = raw['artists']['items'][0]
     # logger.info(artist_raw)
@@ -343,7 +372,6 @@ def lambda_handler(event, context):
             # test = params[key] # 이건 이름만 인식하므로, \n 제거 안해도 됨
             print("인식한 artist name: {} ({})".format(params[key], key)) # 인식했을 때만 출력해 보기. 아직 실제 사용하지는 않음
 
-    # symptom = params['symptom'] # action > params 안에 symptom 파라미터의 값을 가져와 test 에 넣는다.
     # 메시지는 뒤에 \n이 붙어서, 제거
     artist_name = request_body['userRequest']['utterance'].rstrip("\n")
 
