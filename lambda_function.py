@@ -365,6 +365,7 @@ def search_artist(cursor, artist_name):
 def lambda_handler(event, context):
 
     request_body = json.loads(event['body'])
+    # user_id = request_body['userRequest']['user']['id'] # user id. 추후 필요시 사용하기
     logger.info(request_body)
     params = request_body['action']['params'] # 오픈빌더는 action > params 안에 input 데이터가 들어있다.
     if params:
