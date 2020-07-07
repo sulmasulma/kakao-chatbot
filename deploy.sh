@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# rm -r ./libs
+# pip install -r requirements.txt -t ./libs/
+
 rm kakao.zip
 zip kakao.zip -r *
 
