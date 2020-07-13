@@ -71,14 +71,16 @@ def insert_row(cursor, data, table):
     key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
     # 반복적인 인자들을 %s에 넣어줌
     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
-    # print(sql) # 아래와 같은 형태 -> %s에 넣을 값은 163행과 같이 data.values를 반복
+
+    # print(sql) # 아래와 같은 형태
     """
     INSERT INTO artists ( id, name, followers, popularity, url, image_url )
     VALUES ( %s, %s, %s, %s, %s, %s )
     ON DUPLICATE KEY UPDATE id=values(id), name=values(name), followers=values(followers),
     popularity=values(popularity), url=values(url), image_url=values(image_url)
     """
-    cursor.execute(sql, list(data.values())) # 이 2번 반복을 줄일 수 없나? values(id) 이렇게
+
+    cursor.execute(sql, list(data.values()))
     # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
     # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯.
     # print(data.values())
@@ -97,12 +99,13 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     if invoke_response['StatusCode'] not in [200, 202, 204]:
         logging.error('ERROR: Invoking lambda function: {} failed'.format(fxn_name))
-    # invoke_response 형식 예시. StatusCode가 202 -> 비동기 응답인 것으로 보임
+    # invoke_response 형식 예시. StatusCode가 202 -> 비동기 응답
     # {'ResponseMetadata': {
     #     'RequestId': '9c43412b-4eae-4334-9072-846d296430c7', 
     #     'HTTPStatusCode': 202, 
     #     'HTTPHeaders': {
-    #         'date': 'Fri, 12 Jun 2020 14:56:44 GMT', 'content-length': '0', 'connection': 'keep-alive', 'x-amzn-requestid': '9c43412b-4eae-4334-9072-846d296430c7', 'x-amzn-remapped-content-length': '0', 
+    #         'date': 'Fri, 12 Jun 2020 14:56:44 GMT', 'content-length': '0', 'connection': 'keep-alive',
+    #         'x-amzn-requestid': '9c43412b-4eae-4334-9072-846d296430c7', 'x-amzn-remapped-content-length': '0', 
     #         'x-amzn-trace-id': 'root=1-5ee397ac-b822719b1f62900344f882ed;sampled=0'}, 
     #     'RetryAttempts': 0}, 
     #     'StatusCode': 202, 
@@ -118,6 +121,9 @@ def get_top_tracks_db(artist_id, artist_name):
     response = table.query(
         KeyConditionExpression=Key('artist_id').eq(artist_id)
     )
+    # 결과를 popularity 내림차순 정렬하여, 상위 3개 보여 줌
+    # api 결과는 popularity 내림차순으로 나오므로, DB 결과만 정렬하면 됨
+    response['Items'].sort(key=lambda x: x['popularity'], reverse=True)
 
     items = []
 
@@ -174,7 +180,7 @@ def get_top_tracks_api(artist_id, artist_name):
         temp_dic = {
             "title": name,
             "description": ele['album']['name'],
-            "imageUrl": ele['album']['images'][1]['url'],
+            "imageUrl": ele['album']['images'][1]['url'], # images는 같은 앨범 이미지에 대해서 크기별로 넣어 놓은 것. 1이 적당한 사이즈(300x300)라 고름
             "link": {
                 "web": youtube_url
             }
