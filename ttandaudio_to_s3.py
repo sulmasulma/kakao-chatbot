@@ -43,6 +43,19 @@ def main():
     cursor.execute("SELECT id, name FROM artists")
     print("1. RDB scan completed!")
 
+    # 2-1. top_tracks
+    top_tracks = []
+
+    # 먼저 DynamoDB 전체 데이터 삭제
+    table = dynamodb.Table('top_tracks')
+    scan = table.scan()
+    with table.batch_writer() as batch:
+        for item in scan['Items']:
+            batch.delete_item(Key={
+                'artist_id': item['artist_id'],
+                'id': item['id']
+            })
+
     # jsonpath 패키지 이용하여, 원하는 value들만 가져오도록 key path를 설정.
     top_track_keys = {
         "id": "id", # track id
@@ -54,20 +67,6 @@ def main():
         # url, image_url은 nested 구조. 안의 flat한 값만 가져 옴
     }
 
-    # 2-1. top_tracks
-    top_tracks = []
-
-    # 먼저 DynamoDB 전체 데이터 삭제
-    table = dynamodb.Table('top_tracks')
-    scan = table.scan()
-    with table.batch_writer() as batch:
-        for item in scan['Items']:
-            batch.delete_item(Key={
-                'artist_id':item['artist_id'],
-                'id': item['id']
-            })
-    
-
     # 한 행씩 처리
     for (id, name) in cursor.fetchall():
 
@@ -78,11 +77,12 @@ def main():
 
         r = requests.get(URL, params=params, headers=headers)
         raw = json.loads(r.text)
-        # top_tracks.extend(raw['tracks'])
-        #append와의 차이점: append는 단순히 추가. extend는 raw['trakcs']의 element들(각 track)을 추가함
+        # top_tracks_dynamo.extend(raw['tracks'])
+        #append와의 차이점: append는 단순히 추가. extend는 raw['tracks']의 element들(각 track)을 추가함
         
         for i in raw['tracks']: # i는 하나의 트랙
 
+            # S3용 flatten data
             top_track = {}
             for k, v in top_track_keys.items():
                 value = jsonpath.jsonpath(i, v) # [0]으로 리스트가 아닌 요소를 저장하면, 'bool' object is not subscriptable 에러 남
@@ -93,19 +93,14 @@ def main():
                 top_track.update({'artist_id': id}) # key 값을 위해 아티스트 id도 넣어줌
             top_tracks.append(top_track)
 
-        # DynamoDB에 새 데이터 업데이트. raw 통째로
-        # insert가 아니라 update! 삭제하고 다시 삽입?? 없을 경우에만 삽입? 그러면 람다 코드를 고쳐야 할 듯.
-        # 없을 경우에만 삽입할 거면, 바꾼 레코드 / 전체 레코드 비교해 보기
-        # 근데 이렇게 매번 람다 요청 보내는 건 너무 무식한 방법 아닌가? 데이터 한번에 모아서 요청하는 게 좋을 것 같은데.
-        # S3에는 날짜별 데이터를 넣고,
-        # S3는 필요한 데이터만 있고, DynamoDB는 raw data?? 뭔가 이상한데. 아예 구조를 다시 생각해 볼까?
+        # DynamoDB용 raw data
+        # 근데 S3는 필요한 데이터만 있고, DynamoDB는 raw data?? 뭔가 이상한데. 아예 구조를 다시 생각해 볼까?
         resp = invoke_lambda('top-tracks', payload={
                 'artist_name': name, # 로그 용도로 이름까지 보냄
                 'artist_id': id,
                 'data': raw
             })
-        # if name == "OH MY GIRL": # 한번만 테스트
-        #     print("top tracks INSERT:", resp)
+        # print(resp) # 출력하기엔 횟수가 너무 많음
         
 
     # 2-2. json 으로 저장 (연습)
@@ -119,7 +114,7 @@ def main():
     # 뒤의 audio_features에 사용할 track_ids 변수 생성
     track_ids = [i['id'][0] for i in top_tracks] # jsonpath 사용하면 값은 리스트 안에 저장 -> [0]으로 벗겨야 함
     top_tracks = pd.DataFrame(top_tracks)
-    # print(top_tracks.iloc[0])
+    # print(top_tracks.iloc[0]) # 첫 행 확인해 보기
     top_tracks.to_parquet('top-tracks.parquet', engine='pyarrow', compression='snappy')
     # pyarrow라는 엔진 사용(패키지 설치 필요)
     # raw data 그대로 가져오면, nested 값(키 안에 값이 아닌, 리스트 같은 struct 타입)을 저장하는 데 parquet이 문제가 있다고 뜸!
