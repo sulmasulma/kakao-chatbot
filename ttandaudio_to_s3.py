@@ -44,10 +44,9 @@ def main():
     print("1. RDB scan completed!")
 
     # 2-1. top_tracks
-    top_tracks = []
 
     # 먼저 DynamoDB 전체 데이터 삭제
-    table = dynamodb.Table('top_tracks')
+    table = dynamodb.Table('top_tracks3')
     scan = table.scan()
     with table.batch_writer() as batch:
         for item in scan['Items']:
@@ -67,10 +66,12 @@ def main():
         # url, image_url은 nested 구조. 안의 flat한 값만 가져 옴
     }
 
-    # 한 행씩 처리
-    for (id, name) in cursor.fetchall():
+    top_tracks = []
 
-        URL = "https://api.spotify.com/v1/artists/{}/top-tracks".format(id)
+    # 한 행씩 처리
+    for (artist_id, name) in cursor.fetchall():
+
+        URL = "https://api.spotify.com/v1/artists/{}/top-tracks".format(artist_id)
         params = {
             'country': 'US'
         }
@@ -90,16 +91,31 @@ def main():
                     # print(i, k, v, value) # 딱 한 개 있음(False)
                     continue # 결과 값이 없으면 False가 나옴. 이럴 경우 넘어감
                 top_track.update({k: value}) # path(v)에 맞게 API에서 찾아 그 위치의 value를 가져옴
-                top_track.update({'artist_id': id}) # key 값을 위해 아티스트 id도 넣어줌
+                top_track.update({'artist_id': artist_id}) # key 값을 위해 아티스트 id도 넣어줌
             top_tracks.append(top_track)
 
         # DynamoDB용 raw data
         # 근데 S3는 필요한 데이터만 있고, DynamoDB는 raw data?? 뭔가 이상한데. 아예 구조를 다시 생각해 볼까?
+
         resp = invoke_lambda('top-tracks', payload={
                 'artist_name': name, # 로그 용도로 이름까지 보냄
-                'artist_id': id,
+                'artist_id': artist_id,
                 'data': raw
             })
+        # 프로비전 용량 초과로 오류 나면, 재시도?
+        # 이러면 재귀 구문? 근데 여기서 재귀 말고, 일단 모두 요청 보낸 후 top-tracks 람다에서 재귀해야 할 듯
+        # 이렇게 하면, StatusCode가 오기 전에 지나가 버려서 그런지, 아래 루프로 들어가지 않음.
+        # print("status code:", resp['StatusCode'])
+
+        # while resp['StatusCode'] not in [200, 202, 204]:
+        #     print("{} 저장시 프로비전 용량 초과!".format(name))
+        #     time.sleep(60)
+        #     resp = invoke_lambda('top-tracks', payload={
+        #         'artist_name': name, # 로그 용도로 이름까지 보냄
+        #         'artist_id': artist_id,
+        #         'data': raw
+        #     })
+
         # print(resp) # 출력하기엔 횟수가 너무 많음
         
 
@@ -112,7 +128,7 @@ def main():
 
     # 2-2. parquet 형태로 저장
     # 뒤의 audio_features에 사용할 track_ids 변수 생성
-    track_ids = [i['id'][0] for i in top_tracks] # jsonpath 사용하면 값은 리스트 안에 저장 -> [0]으로 벗겨야 함
+    track_ids = [i['id'][0] for i in top_tracks] # jsonpath 사용하면 ['id'] 형태로 저장 -> [0]으로 벗겨야 함
     top_tracks = pd.DataFrame(top_tracks)
     # print(top_tracks.iloc[0]) # 첫 행 확인해 보기
     top_tracks.to_parquet('top-tracks.parquet', engine='pyarrow', compression='snappy')
@@ -137,6 +153,7 @@ def main():
 
     # 2-2. audio_features: batch 형식으로. 100개씩 저장
     tracks_batch = [track_ids[i: i+100] for i in range(0, len(track_ids), 100)]
+
     audio_features = []
 
     for i in tracks_batch:
@@ -190,7 +207,7 @@ def get_headers(client_id, client_secret):
 
 
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
-
+    # invocation_type: 동기식으로 하려면 RequestResponse
     lambda_client = boto3.client('lambda')
     invoke_response = lambda_client.invoke(
         FunctionName = fxn_name,
