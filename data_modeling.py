@@ -1,13 +1,10 @@
 # audio_features 가지고 아티스트들 간의 distance를 계산
 # 프로세스 순서: Athena에서 데이터 가져옴 → mysql에 저장 → 이 테이블 가지고 서비스
 # 수치들의 scale이 다름. loudness 이런건 0~1인데, tempo는 200보다 커지기도 함
-import sys
-import os
+import sys, os, logging, pickle
 import boto3 # athena 필요
 import time, math # time.sleep 사용
 import pymysql
-import logging
-import pickle
 
 # mysql 정보
 with open('dbinfo.pickle', 'rb') as f:
@@ -33,6 +30,7 @@ def main():
     # 1. 아티스트별 avg 데이터
     # query: 모든 metric이 아닌, 필요한 것만 가져옴
     # 날짜 조건: 하드코딩하지 않고 = CURRENT_DATE - INTERVAL '1' DAY 할 수도 있음
+    # 100개는 아무 기준이 없네. popularity 상위? -> top_tracks에
     query = """
         SELECT
             artist_id,
@@ -45,15 +43,16 @@ def main():
         FROM
             top_tracks t1
         JOIN
-            audio_features t2 on t2.id = t1.id and cast(t1.dt as date) = date('2020-04-01') and cast(t2.dt as date) = date('2020-04-01')
+            audio_features t2 on t2.id = t1.id and cast(t1.dt as date) = CURRENT_DATE and cast(t2.dt as date) = CURRENT_DATE
         GROUP BY
             t1.artist_id
+        ORDER BY
+            t1.popularity desc
         LIMIT 100
     """
 
     r = query_athena(query, athena)
-    results = get_query_result(r['QueryExecutionId'], athena)
-
+    results = get_query_result(r['QueryExecutionId'], athena) # QueryExecutionId는 뭐지?
     artists = process_data(results) # list of dicts 형태. 행별 dict들이 있음
     # print(artists)
     # sys.exit(0)
@@ -105,7 +104,7 @@ def main():
 
             insert_row(cursor, data, 'related_artists')
         index += 1
-        if index % 10 == 0: # 이 부분(verbose)은 아티스트 개수에 따라 수정해야 하는데, 하드코딩?
+        if index % 10 == 0: # 이 할당량(10)은 아티스트 개수에 따라 수정해야 하는데, 하드코딩?
             print("{}th artist complete!".format(index))
 
     conn.commit()
@@ -159,13 +158,14 @@ def get_query_result(query_id, athena):
 
     return response
 
-# list of dicts로 행별 데이터 반환하는 함수
+# json 데이터 형태 변환: list of dicts로 행별 데이터 반환하는 함수
 def process_data(results):
 
     columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
 
     listed_results = [] # empty list 생성
-    for res in results['ResultSet']['Rows'][1:]: # 행별로 저장
+    # 행별로 저장. ['ResultSet']['Rows']는 0행은 columns. 두 번째 행부터 값이 들어 있음
+    for res in results['ResultSet']['Rows'][1:]:
         values = []
         for field in res['Data']:
             try:
