@@ -89,7 +89,7 @@ def insert_row(cursor, data, table):
 # IAM을 통해 이 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
 # invocation_type = 'Event' -> 비동기!!
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
-
+    # invocation_type: 동기식으로 하려면 RequestResponse
     lambda_client = boto3.client('lambda')
     invoke_response = lambda_client.invoke(
         FunctionName = fxn_name,
@@ -108,8 +108,8 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
     #         'x-amzn-requestid': '9c43412b-4eae-4334-9072-846d296430c7', 'x-amzn-remapped-content-length': '0', 
     #         'x-amzn-trace-id': 'root=1-5ee397ac-b822719b1f62900344f882ed;sampled=0'}, 
     #     'RetryAttempts': 0}, 
-    #     'StatusCode': 202, 
-    #     'Payload': <botocore.response.StreamingBody object at 0x7fbe6f4bd350>
+    # 'StatusCode': 202, 
+    # 'Payload': <botocore.response.StreamingBody object at 0x7fbe6f4bd350>
     # }
 
     return invoke_response
