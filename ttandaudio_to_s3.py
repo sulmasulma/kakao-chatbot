@@ -46,6 +46,8 @@ def main():
     # 2-1. top_tracks
 
     # 먼저 DynamoDB 전체 데이터 삭제
+    # 전체 삭제보다는, 없는 건 추가하고 있는 건 업데이트
+    # 업데이트 기준: 0-2번 탑 트랙이 변경되었을 경우?
     table = dynamodb.Table('top_tracks3')
     scan = table.scan()
     with table.batch_writer() as batch:
@@ -140,8 +142,8 @@ def main():
 
     # S3에 저장 - top-tracks 폴더
     s3 = boto3.resource('s3')
-    dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "202-03-23" 형태
-    object = s3.Object('spotify-artists-matt', 'top-tracks/dt={}/top_tracks.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
+    dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "2020-03-23" 형태
+    object = s3.Object('bucket 이름', 'top-tracks/dt={}/top_tracks.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
     data = open('top-tracks.parquet', 'rb')
     object.put(Body=data)
     # dt는 datetime. 파티션 형식을 정의해 주는 것. 데이터를 쪼개서 스캔할 때 사용.
@@ -174,12 +176,12 @@ def main():
     # S3에 저장 - audio_features 폴더
     s3 = boto3.resource('s3')
     dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "2020-03-23" 형태
-    object = s3.Object('spotify-artists-matt', 'audio-features/dt={}/audio_features.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
+    object = s3.Object('bucket 이름', 'audio-features/dt={}/audio_features.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
     data = open('audio-features.parquet', 'rb')
     object.put(Body=data)
 
     print("3. audio-features storage completed!")
-    print("실행 시간:", round(time.time() - start, 1))
+    print("실행 시간: {}s".format(round(time.time() - start, 1)))
 
 
 def get_headers(client_id, client_secret):
