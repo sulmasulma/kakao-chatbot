@@ -48,7 +48,6 @@ def main():
             t1.artist_id
         ORDER BY
             t1.popularity desc
-        LIMIT 100
     """
 
     r = query_athena(query, athena)
@@ -161,17 +160,18 @@ def get_query_result(query_id, athena):
 # json 데이터 형태 변환: list of dicts로 행별 데이터 반환하는 함수
 def process_data(results):
 
-    columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
+    data = results['ResultSet']
+    columns = [col['VarCharValue'] for col in data['Rows'][0]['Data']]
+    # columns = [col['Label'] for col in results['ResultSet']['ResultSetMetadata']['ColumnInfo']]
 
-    listed_results = [] # empty list 생성
-    # 행별로 저장. ['ResultSet']['Rows']는 0행은 columns. 두 번째 행부터 값이 들어 있음
-    for res in results['ResultSet']['Rows'][1:]:
+    listed_results = []
+    for row in data['Rows'][1:]: # 행별로 저장
         values = []
-        for field in res['Data']:
+        for col in row['Data']:
             try:
-                values.append(list(field.values())[0]) # value 들이 [value] 이런 식으로 반환되는 듯
-            except:
-                values.append(list(' '))
+                values.append(col['VarCharValue']) # 각 칼럼의 값들이 {'VarCharValue': value} 형식
+            except: # null일 경우
+                values.append('')
         listed_results.append(dict(zip(columns, values)))
 
     return listed_results

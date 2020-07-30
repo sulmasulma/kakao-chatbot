@@ -6,7 +6,6 @@ import json, pickle
 import pymysql
 from datetime import datetime
 import pandas as pd # 데이터를 parquet화
-# import jsonpath  # pip3 install jsonpath --user
 
 # api 사용 정보, db 정보 가져오기
 with open('dbinfo.pickle', 'rb') as f:

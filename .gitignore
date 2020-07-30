@@ -3,6 +3,8 @@
 *.pkl
 *.zip
 *.parquet
+*.pem
 
 # folder
 libs/
+lambda/
