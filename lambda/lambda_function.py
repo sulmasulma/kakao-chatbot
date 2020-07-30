@@ -148,7 +148,7 @@ def get_top_tracks_db(artist_id, artist_name):
 
         items.append(temp_dic)
     
-    print(items)
+    # print(items)
 
     return items
 
@@ -193,6 +193,18 @@ def get_top_tracks_api(artist_id, artist_name):
 def translate_artist(korean):
     translator = Translator() # 번역기
     return translator.translate(korean, dest="en").text
+
+
+# 관련 아티스트의 id와 이름 가져오기
+def related_artist(artist_id):
+    query = """
+        select t1.y_artist, t2.name, t2.image_url from related_artists t1
+        join artists t2 on t1.y_artist = t2.id
+        where t1.artist_id = '{}'
+    """.format(artist_id)
+    # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
+    cursor.execute(query)
+    return cursor.fetchall()[0]
 
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
@@ -329,7 +341,7 @@ def search_artist(cursor, artist_name):
             'data': globals()['data_for_dynamodb']
         })
         # 응답 결과: 해당 람다에서 리턴한 값이 아니라, 아래와 같이 찍힘
-        print("top tracks INSERT:", resp)
+        # print("top tracks INSERT:", resp)
 
         query = {
             'search_query': artist_raw['name']
@@ -526,7 +538,42 @@ def lambda_handler(event, context):
     }
     temp.append(temp_list)
 
-    # 관련 아티스트 ListCard도 제공
+    # 3. 관련 아티스트 안내 메시지
+    # 관련 아티스트의 id, name 및 top_tracks 필요
+    rel_id, rel_name, rel_image_url = related_artist(artist_id)
+    temp_text2 = {
+        "simpleText": {
+            "text": "관련 아티스트인 {}의 노래도 들어보세요.".format(rel_name)
+        }
+    }
+    temp.append(temp_text2)
+    
+    # 4. 관련 아티스트 ListCard
+    rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
+    query2 = {
+        'search_query': rel_name
+    }
+    youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
+
+    temp_list2 = {
+        "listCard": {
+            "header": {
+                "title": rel_name,
+                "imageUrl": rel_image_url
+            },
+            "items": rel_top_tracks,
+            "buttons": [
+                {
+                "label": "다른 노래도 보기",
+                "action": "webLink",
+                "webLinkUrl": youtube_url2
+                }
+            ]
+        }
+    }
+    temp.append(temp_list2)
+    # print(temp[-1])
+    
 
     # 최종 메시지
     result = {

@@ -98,7 +98,7 @@ def insert_row(cursor, data, table):
     key_placeholders = ', '.join(['{0}=%s'.format(k) for k in data.keys()])
     # 기본적으로 insert 하되, 키가 같으면 update
     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
-    cursor.execute(sql, list(data.values())*2)
+    cursor.execute(sql, list(data.values())*2) # *2는 왜 들어간 거지?
 
 ############################
 
@@ -229,7 +229,8 @@ def main():
             # 해당 거리가 최소값보다 작으면, 데이터를 갱신. 최종 데이터를 삽입
             # 날짜는 삽입 당시 timestamp로 넣도록 테이블에서 설정해 놓았으므로, 신경 쓰지 않아도 됨.
             # 근데 날짜/시간도 업데이트 되도록 해야 할 것 같은데?? 안 되는 듯.
-            if dist < dist_min:
+            # 같은 아티스트가 중복 등록되어 있어서 거리가 0인 경우가 있음!! 이 경우는 제외하기(sg 워너비, 윤도현)
+            if dist < dist_min and dist != 0: 
                 temp = {
                     'artist_id': mine['artist_id'],
                     'y_artist': other['artist_id'],
