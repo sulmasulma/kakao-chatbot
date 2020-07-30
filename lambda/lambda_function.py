@@ -196,15 +196,19 @@ def translate_artist(korean):
 
 
 # 관련 아티스트의 id와 이름 가져오기
+# 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
 def related_artist(artist_id):
-    query = """
-        select t1.y_artist, t2.name, t2.image_url from related_artists t1
-        join artists t2 on t1.y_artist = t2.id
-        where t1.artist_id = '{}'
-    """.format(artist_id)
-    # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
-    cursor.execute(query)
-    return cursor.fetchall()[0]
+    try:
+        query = """
+            select t1.y_artist, t2.name, t2.image_url from related_artists t1
+            join artists t2 on t1.y_artist = t2.id
+            where t1.artist_id = '{}'
+        """.format(artist_id)
+        # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
+        cursor.execute(query)
+        return cursor.fetchall()[0]
+    except:
+        return
 
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
@@ -492,36 +496,19 @@ def lambda_handler(event, context):
         })
         print("top tracks INSERT:", resp)
 
-    # 1. SimpleText
-    temp_text = {
-        "simpleText": {
-            "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
+
+    # 2. 관련 아티스트가 있을 경우
+    if related_artist(artist_id):
+        # 1. SimpleText
+        temp_text = {
+            "simpleText": {
+                "text": "{}와/과 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name)
+            }
         }
-    }
-    temp.append(temp_text)
+        temp.append(temp_text)
 
-    # 2. BasicCard: image_url, url 등 보여주는 카드
-    # YouTube에서 듣기
-    # {
-    #     "basicCard": {
-    #         "title": temp_artist_name,
-    #         "description": ", ".join(genres), # 여기에 장르 담기
-    #         "thumbnail": {
-    #             "imageUrl": image_url
-    #         },
-    #         "buttons": [
-    #             {
-    #                 "action": "webLink",
-    #                 "label": "YouTube에서 듣기", # label은 최대 8자
-    #                 "webLinkUrl": youtube_url
-    #             },
-    #         ]
-    #     }
-    # },
-
-    # 2. ListCard
-    temp_list = {
-        "listCard": {
+        # 2. Carousel
+        card_this_artist = {
             "header": {
                 "title": temp_artist_name,
                 "imageUrl": image_url
@@ -535,28 +522,17 @@ def lambda_handler(event, context):
                 }
             ]
         }
-    }
-    temp.append(temp_list)
+        # temp.append(temp_list)
 
-    # 3. 관련 아티스트 안내 메시지
-    # 관련 아티스트의 id, name 및 top_tracks 필요
-    rel_id, rel_name, rel_image_url = related_artist(artist_id)
-    temp_text2 = {
-        "simpleText": {
-            "text": "관련 아티스트인 {}의 노래도 들어보세요.".format(rel_name)
+        # 관련 아티스트의 id, name 및 top_tracks 필요
+        rel_id, rel_name, rel_image_url = related_artist(artist_id)
+        rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
+        query2 = {
+            'search_query': rel_name
         }
-    }
-    temp.append(temp_text2)
-    
-    # 4. 관련 아티스트 ListCard
-    rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
-    query2 = {
-        'search_query': rel_name
-    }
-    youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
+        youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
 
-    temp_list2 = {
-        "listCard": {
+        card_rel_artist = {
             "header": {
                 "title": rel_name,
                 "imageUrl": rel_image_url
@@ -570,9 +546,47 @@ def lambda_handler(event, context):
                 }
             ]
         }
-    }
-    temp.append(temp_list2)
-    # print(temp[-1])
+
+        # temp.append(temp_list2)
+        temp_carousel = {
+            "carousel": {
+                "type": "listCard",
+                "items": [
+                    card_this_artist, card_rel_artist
+                ]
+            }
+        }
+
+        temp.append(temp_carousel)
+
+    # 관련 아티스트가 아직 저장되어 있지 않은 경우 (매일 밤 배치 처리를 통해 저장)
+    else:
+        # 1. SimpleText
+        temp_text = {
+            "simpleText": {
+                "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
+            }
+        }
+        temp.append(temp_text)
+
+        # 2. ListCard
+        temp_list = {
+            "listCard": {
+                "header": {
+                "title": temp_artist_name,
+                "imageUrl": image_url
+                },
+                "items": temp_top_tracks,
+                "buttons": [
+                    {
+                    "label": "다른 노래도 보기",
+                    "action": "webLink",
+                    "webLinkUrl": youtube_url
+                    }
+                ]
+            }
+        }
+        temp.append(temp_list)
     
 
     # 최종 메시지
