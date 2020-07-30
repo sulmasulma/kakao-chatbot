@@ -497,34 +497,34 @@ def lambda_handler(event, context):
         print("top tracks INSERT:", resp)
 
 
-    # 2. 관련 아티스트가 있을 경우
+    # 요청받은 아티스트의 카드 (공통)
+    card_this_artist = {
+        "header": {
+            "title": temp_artist_name,
+            "imageUrl": image_url
+        },
+        "items": temp_top_tracks,
+        "buttons": [
+            {
+            "label": "다른 노래도 보기",
+            "action": "webLink",
+            "webLinkUrl": youtube_url
+            }
+        ]
+    }
+
+    # 2. 관련 아티스트가 있을 경우: 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
     if related_artist(artist_id):
         # 1. SimpleText
         temp_text = {
             "simpleText": {
-                "text": "{}와/과 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name)
+                "text": "{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name)
             }
         }
         temp.append(temp_text)
 
-        # 2. Carousel
-        card_this_artist = {
-            "header": {
-                "title": temp_artist_name,
-                "imageUrl": image_url
-            },
-            "items": temp_top_tracks,
-            "buttons": [
-                {
-                "label": "다른 노래도 보기",
-                "action": "webLink",
-                "webLinkUrl": youtube_url
-                }
-            ]
-        }
-        # temp.append(temp_list)
-
-        # 관련 아티스트의 id, name 및 top_tracks 필요
+        # 2. ListCard 여러 개
+        # 관련 아티스트의 id, name 및 top_tracks 가져오기
         rel_id, rel_name, rel_image_url = related_artist(artist_id)
         rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
         query2 = {
@@ -547,19 +547,19 @@ def lambda_handler(event, context):
             ]
         }
 
-        # temp.append(temp_list2)
         temp_carousel = {
             "carousel": {
                 "type": "listCard",
                 "items": [
                     card_this_artist, card_rel_artist
+                    # 관련 아티스트가 여러 명일 경우 이 부분에 append 하도록.
                 ]
             }
         }
 
         temp.append(temp_carousel)
 
-    # 관련 아티스트가 아직 저장되어 있지 않은 경우 (매일 밤 배치 처리를 통해 저장)
+    # 관련 아티스트가 아직 저장되어 있지 않은 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트
     else:
         # 1. SimpleText
         temp_text = {
@@ -570,23 +570,16 @@ def lambda_handler(event, context):
         temp.append(temp_text)
 
         # 2. ListCard
-        temp_list = {
-            "listCard": {
-                "header": {
-                "title": temp_artist_name,
-                "imageUrl": image_url
-                },
-                "items": temp_top_tracks,
-                "buttons": [
-                    {
-                    "label": "다른 노래도 보기",
-                    "action": "webLink",
-                    "webLinkUrl": youtube_url
-                    }
+        temp_carousel = {
+            "carousel": {
+                "type": "listCard",
+                "items": [
+                    card_this_artist
                 ]
             }
         }
-        temp.append(temp_list)
+
+        temp.append(temp_carousel)
     
 
     # 최종 메시지
@@ -597,7 +590,7 @@ def lambda_handler(event, context):
         }
     }
 
-    logger.info(result)
+    # logger.info(result)
 
     # 메시지 리턴
     return {
