@@ -395,8 +395,8 @@ def lambda_handler(event, context):
 
         # 새로운 데이터가 추가되었을 경우의 메시지 상태. 기존 데이터를 사용할 경우 아래로 내려감
         if search_result:
-            print("대체 메시지")
-            print(search_result)
+            # print("대체 메시지")
+            # print(search_result)
             result = {
                 "version": "2.0",
                 "template": {
@@ -525,6 +525,8 @@ def lambda_handler(event, context):
         }
     }
     temp.append(temp_list)
+
+    # 관련 아티스트 ListCard도 제공
 
     # 최종 메시지
     result = {
