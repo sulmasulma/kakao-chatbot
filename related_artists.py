@@ -211,12 +211,11 @@ def main():
     metrics = ['danceability', 'energy', 'loudness', 'speechiness', 'acousticness', 'instrumentalness']
 
     for i in range(len(artists)):
-        dist_min = 500 # 최소값 갱신을 위해 충분히 큰 값을 초기값으로 설정
-
-        # idx += 1
-        temp = artists.copy() # temp: 자기 자신 뺀 것.
-        mine = temp.pop(i) # mine: 자기 자신.
-        for other in temp:
+        data = [] # 일단 다 넣고, 정렬해서 최소 거리인 5개를 sql에 넣기
+        
+        others = artists.copy() # temp: 자기 자신 뺀 것.
+        mine = others.pop(i) # mine: 자기 자신.
+        for other in others:
             dist = 0
             for m in metrics:
                 # mine과 other 간 거리 계산
@@ -225,23 +224,23 @@ def main():
                 y = float(other[m])
                 y_norm = normalize(y, float(avgs[m + '_min']), float(avgs[m + '_max']))
                 dist += math.sqrt((x_norm - y_norm)**2)
-
-            # 해당 거리가 최소값보다 작으면, 데이터를 갱신. 최종 데이터를 삽입
-            # 날짜는 삽입 당시 timestamp로 넣도록 테이블에서 설정해 놓았으므로, 신경 쓰지 않아도 됨.
-            # 근데 날짜/시간도 업데이트 되도록 해야 할 것 같은데?? 안 되는 듯.
-            # 같은 아티스트가 중복 등록되어 있어서 거리가 0인 경우가 있음!! 이 경우는 제외하기(sg 워너비, 윤도현)
-            if dist < dist_min and dist != 0: 
+            
+            if dist != 0:
                 temp = {
                     'artist_id': mine['artist_id'],
                     'y_artist': other['artist_id'],
                     'distance': dist
                 }
-                dist_min = dist
-        # 이렇게 각각 삽입 말고, 한번에 할 수 있나? df.to_sql?
-        insert_row(cursor, temp, 'related_artists')
-        # data.append(temp)
+                data.append(temp)
+
+        # 아티스트별로 가까운 5개만 MySQL에 삽입
+        # 날짜는 삽입 시점의 timestamp로 넣도록 테이블에서 설정해 놓았으므로, 신경 쓰지 않아도 됨
+        data = sorted(data, key=lambda x: x['distance'])[:5]
+        for d in data:
+            insert_row(cursor, d, 'related_artists')
 
     conn.commit()
+    cursor.close()
     print('related_artists 테이블 삽입 완료!')
     print("실행 시간: {}s".format(round(time.time() - start, 1)))
 

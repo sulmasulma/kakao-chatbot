@@ -202,11 +202,12 @@ def related_artist(artist_id):
         query = """
             select t1.y_artist, t2.name, t2.image_url from related_artists t1
             join artists t2 on t1.y_artist = t2.id
-            where t1.artist_id = '{}'
+            where t1.artist_id = '{}' order by t1.distance
+            limit 3
         """.format(artist_id)
         # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
         cursor.execute(query)
-        return cursor.fetchall()[0]
+        return cursor.fetchall()
     except:
         return
 
@@ -523,39 +524,45 @@ def lambda_handler(event, context):
         }
         temp.append(temp_text)
 
-        # 2. ListCard 여러 개
+        # 2. Carousel: ListCard 여러 개
         # 관련 아티스트의 id, name 및 top_tracks 가져오기
-        rel_id, rel_name, rel_image_url = related_artist(artist_id)
-        rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
-        query2 = {
-            'search_query': rel_name
-        }
-        youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
-
-        card_rel_artist = {
-            "header": {
-                "title": rel_name,
-                "imageUrl": rel_image_url
-            },
-            "items": rel_top_tracks,
-            "buttons": [
-                {
-                "label": "다른 노래도 보기",
-                "action": "webLink",
-                "webLinkUrl": youtube_url2
-                }
-            ]
-        }
-
         temp_carousel = {
             "carousel": {
                 "type": "listCard",
                 "items": [
-                    card_this_artist, card_rel_artist
-                    # 관련 아티스트가 여러 명일 경우 이 부분에 append 하도록.
                 ]
             }
         }
+
+        # 2-1. 해당 아티스트 먼저 넣기
+        temp_carousel['carousel']['items'].append(card_this_artist)
+
+        # 2-2. 관련 아티스트 3개 넣기
+        rel_artists = related_artist(artist_id)
+        for artist in rel_artists:
+            rel_id, rel_name, rel_image_url = artist
+            rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
+            query2 = {
+                'search_query': rel_name
+            }
+            youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
+
+            card_rel_artist = {
+                "header": {
+                    "title": rel_name,
+                    "imageUrl": rel_image_url
+                },
+                "items": rel_top_tracks,
+                "buttons": [
+                    {
+                    "label": "다른 노래도 보기",
+                    "action": "webLink",
+                    "webLinkUrl": youtube_url2
+                    }
+                ]
+            }
+
+            temp_carousel['carousel']['items'].append(card_rel_artist)
 
         temp.append(temp_carousel)
 
