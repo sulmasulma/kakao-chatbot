@@ -46,16 +46,18 @@ def main():
     # 2-1. top_tracks
 
     # 먼저 DynamoDB 전체 데이터 삭제
-    # 전체 삭제보다는, 없는 건 추가하고 있는 건 업데이트
+    # 전체 삭제보다는, 없는 건 추가하고 있는 건 업데이트 -> 행을 삭제할 필요 없고, put_item(탑 트랙의 람다에서 실행)하면 새로운 키 아이템은 집어넣고, 있던 키는 대체함!!
+    # 출처: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb.html
+
     # 업데이트 기준: 0-2번 탑 트랙이 변경되었을 경우?
-    table = dynamodb.Table('top_tracks3')
-    scan = table.scan()
-    with table.batch_writer() as batch:
-        for item in scan['Items']:
-            batch.delete_item(Key={
-                'artist_id': item['artist_id'],
-                'id': item['id']
-            })
+    # table = dynamodb.Table('top_tracks')
+    # scan = table.scan()
+    # with table.batch_writer() as batch:
+    #     for item in scan['Items']:
+    #         batch.delete_item(Key={
+    #             'artist_id': item['artist_id'],
+    #             'id': item['id']
+    #         })
 
     # jsonpath 패키지 이용하여, 원하는 value들만 가져오도록 key path를 설정.
     top_track_keys = {
