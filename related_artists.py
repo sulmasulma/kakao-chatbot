@@ -36,8 +36,9 @@ def query_athena(query, athena):
         QueryExecutionContext={
             'Database': 'production'
         },
-        ResultConfiguration={ # 저장 위치
-            'OutputLocation': "s3://athena-panomix-tables-matt/repair/", # response 저장하는 버킷 생성해서 거기다 저장
+        ResultConfiguration={
+            # 쿼리 결과 저장하는 위치 지정
+            'OutputLocation': "s3://athena-panomix-tables-matt/repair/", 
             'EncryptionConfiguration': {
                 'EncryptionOption': 'SSE_S3'
             }
@@ -46,7 +47,7 @@ def query_athena(query, athena):
 
     return response
 
-# Athena 쿼리 결과(response) 반환하는 함수. response는 s3에 저장
+
 def get_query_result(query_id, athena):
 
     response = athena.get_query_execution(
@@ -71,7 +72,7 @@ def get_query_result(query_id, athena):
     return response
 
 
-# 내가 수정한 코드. 실행 시간은 큰 차이 안 남
+# 쿼리 결과 데이터 전처리
 def process_data(results):
 
     data = results['ResultSet']
@@ -98,7 +99,7 @@ def insert_row(cursor, data, table):
     key_placeholders = ', '.join(['{0}=%s'.format(k) for k in data.keys()])
     # 기본적으로 insert 하되, 키가 같으면 update
     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
-    cursor.execute(sql, list(data.values())*2) # *2는 왜 들어간 거지?
+    cursor.execute(sql, list(data.values())*2) # *2: values()와 on duplicate key update에 값이 중복되어 들어가기 때문에, 2번 사용
 
 ############################
 
@@ -124,6 +125,7 @@ def main():
         r = query_athena(query, athena)
         if r['ResponseMetadata']['HTTPStatusCode'] == 200:
             result = get_query_result(r['QueryExecutionId'], athena)
+            # print(result) # 파티션 생성 결과
             print('top_tracks partition update!') # 신규 파티션 생성 
 
     # 2. audio_features 데이터 업데이트
@@ -153,6 +155,7 @@ def main():
         r = query_athena(query, athena)
         if r['ResponseMetadata']['HTTPStatusCode'] == 200:
             result = get_query_result(r['QueryExecutionId'], athena)
+            # print(result)
             print('audio_features partition update!') # 신규 파티션 생성 
 
 
