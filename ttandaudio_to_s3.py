@@ -17,6 +17,10 @@ with open('dbinfo.pickle', 'rb') as f:
 for key, value in data.items():
     globals()[key] = value
 
+# s3 버킷 이름
+with open('s3_bucket.pickle', 'rb') as f:
+    s3_bucket = pickle.load(f)
+
 
 def main():
     start = time.time()
@@ -145,7 +149,7 @@ def main():
     # S3에 저장 - top-tracks 폴더
     s3 = boto3.resource('s3')
     dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "2020-03-23" 형태
-    object = s3.Object('spotify-artists-matt', 'top-tracks/dt={}/top_tracks.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
+    object = s3.Object(s3_bucket['artists'], 'top-tracks/dt={}/top_tracks.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
     data = open('top-tracks.parquet', 'rb')
     object.put(Body=data)
     # dt는 datetime. 파티션 형식을 정의해 주는 것. 데이터를 쪼개서 스캔할 때 사용.
@@ -178,7 +182,7 @@ def main():
     # S3에 저장 - audio_features 폴더
     s3 = boto3.resource('s3')
     dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "2020-03-23" 형태
-    object = s3.Object('spotify-artists-matt', 'audio-features/dt={}/audio_features.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
+    object = s3.Object(s3_bucket['artists'], 'audio-features/dt={}/audio_features.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
     data = open('audio-features.parquet', 'rb')
     object.put(Body=data)
 

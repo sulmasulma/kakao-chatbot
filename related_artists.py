@@ -5,20 +5,24 @@ import time, math # time.sleep 사용
 from datetime import datetime
 import pymysql
 
-# mysql 정보
+# api 사용 정보, db 정보 가져오기
 with open('dbinfo.pickle', 'rb') as f:
     data = pickle.load(f)
 
-# 계정 정보
 for key in data.keys():
     globals()[key] = data[key]
 
+# mysql 연결
 try:
     conn = pymysql.connect(host, user=username, passwd=password, db=database, port=port, use_unicode=True, charset='utf8')
     cursor = conn.cursor()
 except:
     logging.error("could not connect to rds")
     sys.exit(1)
+
+# s3 버킷 이름
+with open('s3_bucket.pickle', 'rb') as f:
+    s3_bucket = pickle.load(f)
 
 athena = boto3.client('athena')
 
@@ -38,7 +42,7 @@ def query_athena(query, athena):
         },
         ResultConfiguration={
             # 쿼리 결과 저장하는 위치 지정
-            'OutputLocation': "s3://athena-panomix-tables-matt/repair/", 
+            'OutputLocation': 's3://' + s3_bucket['athena_query_result'], 
             'EncryptionConfiguration': {
                 'EncryptionOption': 'SSE_S3'
             }
@@ -116,8 +120,8 @@ def main():
         popularity int,
         image_url string
         ) partitioned by (dt string)
-        stored as parquet location 's3://spotify-artists-matt/top-tracks' tblproperties("parquet.compress" = "snappy")
-    """
+        stored as parquet location 's3://{}/top-tracks' tblproperties("parquet.compress" = "snappy")
+    """.format(s3_bucket['artists'])
     r = query_athena(query, athena)
 
     if r['ResponseMetadata']['HTTPStatusCode'] == 200:
@@ -146,8 +150,8 @@ def main():
         tempo double,
         id string
         ) partitioned by (dt string)
-        stored as parquet location 's3://spotify-artists-matt/audio-features' tblproperties("parquet.compress" = "snappy")
-    """
+        stored as parquet location 's3://{}/audio-features' tblproperties("parquet.compress" = "snappy")
+    """.format(s3_bucket['artists'])
     r = query_athena(query, athena)
 
     if r['ResponseMetadata']['HTTPStatusCode'] == 200:

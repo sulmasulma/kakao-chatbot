@@ -14,6 +14,10 @@ with open('dbinfo.pickle', 'rb') as f:
 for key, value in data.items():
     globals()[key] = value
 
+# s3 버킷 이름
+with open('s3_bucket.pickle', 'rb') as f:
+    s3_bucket = pickle.load(f)
+
 
 def main():
 
@@ -40,7 +44,7 @@ def main():
     # S3에 저장 - top-tracks 폴더
     s3 = boto3.resource('s3')
     dt = datetime.utcnow().strftime('%Y-%m-%d')
-    object = s3.Object('spotify-artists-matt', 'artists/dt={}/artists.parquet'.format(dt))
+    object = s3.Object(s3_bucket['artists'], 'artists/dt={}/artists.parquet'.format(dt))
     data = open('artists.parquet', 'rb')
     object.put(Body=data)
 
