@@ -7,7 +7,7 @@ import base64
 import json, pickle
 import pymysql
 from datetime import datetime
-import pandas as pd # 데이터를 parquet화
+import pandas as pd
 import jsonpath  # pip3 install jsonpath --user
 
 # api 사용 정보, db 정보 가져오기
@@ -50,10 +50,9 @@ def main():
     # 2-1. top_tracks
 
     # 먼저 DynamoDB 전체 데이터 삭제
-    # 전체 삭제보다는, 없는 건 추가하고 있는 건 업데이트 -> 행을 삭제할 필요 없고, put_item(탑 트랙의 람다에서 실행)하면 새로운 키 아이템은 집어넣고, 있던 키는 대체함!!
+    # 수정 -> 삭제할 필요 없고, put_item(탑 트랙의 람다에서 실행)하면 새로운 키 아이템은 집어넣고, 있던 키는 대체함!!
     # 출처: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb.html
 
-    # 업데이트 기준: 0-2번 탑 트랙이 변경되었을 경우?
     # table = dynamodb.Table('top_tracks')
     # scan = table.scan()
     # with table.batch_writer() as batch:
@@ -140,11 +139,8 @@ def main():
     top_tracks = pd.DataFrame(top_tracks)
     # print(top_tracks.iloc[0]) # 첫 행 확인해 보기
     top_tracks.to_parquet('top-tracks.parquet', engine='pyarrow', compression='snappy')
-    # pyarrow라는 엔진 사용(패키지 설치 필요)
-    # raw data 그대로 가져오면, nested 값(키 안에 값이 아닌, 리스트 같은 struct 타입)을 저장하는 데 parquet이 문제가 있다고 뜸!
-    # 따라서 가장 raw data는 json, 정제된 평평한 데이터만 parquet으로 사용해야 함.
+    # pyarrow라는 엔진 사용 (패키지 설치 필요)
     # compression은 압축 방식. 압축하여 저장 용량은 줄이고 parquet으로 퍼포먼스도 개선
-    # -> top_tracks를 raw 그대로 말고 선택된 key들(top_track_keys)만 가져오면, 2차원 데이터이므로 오류 나지 않음
 
     # S3에 저장. top-tracks 폴더
     s3 = boto3.resource('s3')
