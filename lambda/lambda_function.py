@@ -489,7 +489,7 @@ def lambda_handler(event, context):
                 }
             }
 
-        # api 결과가 있으면 DB 삽입
+        # API 결과가 있으면 DB 삽입
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': db_artist_name, # 로그 용도로 이름까지 보냄
             'artist_id': artist_id,
