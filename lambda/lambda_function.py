@@ -524,7 +524,7 @@ def lambda_handler(event, context):
         }
         temp.append(temp_text)
 
-        # 2. Carousel: ListCard 여러 개
+        # Carousel: ListCard 여러 개
         # 관련 아티스트의 id, name 및 top_tracks 가져오기
         temp_carousel = {
             "carousel": {

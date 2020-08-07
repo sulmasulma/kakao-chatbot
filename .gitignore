@@ -5,6 +5,7 @@
 *.parquet
 *.pem
 *.sh
+*.txt
 kakao_bot.py
 
 # folder

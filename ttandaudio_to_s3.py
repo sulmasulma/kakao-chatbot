@@ -146,7 +146,7 @@ def main():
     # compression은 압축 방식. 압축하여 저장 용량은 줄이고 parquet으로 퍼포먼스도 개선
     # -> top_tracks를 raw 그대로 말고 선택된 key들(top_track_keys)만 가져오면, 2차원 데이터이므로 오류 나지 않음
 
-    # S3에 저장 - top-tracks 폴더
+    # S3에 저장. top-tracks 폴더
     s3 = boto3.resource('s3')
     dt = datetime.utcnow().strftime('%Y-%m-%d') # UTC 기준 현재 시간으로. "2020-03-23" 형태
     object = s3.Object(s3_bucket['artists'], 'top-tracks/dt={}/top_tracks.parquet'.format(dt)) # 새로운 폴더(파티션)가 생성이 되는 것
