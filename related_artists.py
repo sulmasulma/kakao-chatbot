@@ -215,7 +215,6 @@ def main():
     results = get_query_result(r['QueryExecutionId'], athena)
     avgs = process_data(results)[0]
 
-    # 이용할 수치들
     metrics = ['danceability', 'energy', 'loudness', 'speechiness', 'acousticness', 'instrumentalness']
 
     for i in range(len(artists)):
