@@ -7,6 +7,8 @@
 *.sh
 *.txt
 kakao_bot.py
+data_modeling.py
+artists_to_s3.py
 
 # folder
 lambda/libs/
