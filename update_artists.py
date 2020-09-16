@@ -85,7 +85,8 @@ def main():
         ids.append(artist_id)
 
     for i in range(0, len(ids), 50):
-        # 데이터 할당. 최대 50개씩 쿼리할 수 있기 때문에, 50개씩 나누기
+        # Get Several Artists API를 이용하여 50개씩 쿼리(최대 50개씩 쿼리할 수 있음)
+        # 데이터 할당(50개)
         part = ids[i:i+50]
 
         # API 쿼리
@@ -119,8 +120,7 @@ def main():
         print("{}번째 아티스트 업데이트. 실행 시간: {}s".format(i+50, round(time.time() - start, 1)))
     
     # 이렇게 하면 총 5초 걸림!!
-        
-    conn.commit()
+
 
     # for (artist_id, ) in cursor.fetchall():
     #     i += 1
@@ -157,14 +157,16 @@ def main():
     #         # break
     #     if i == 300:
     #         break # 테스트
+    
+    # 이렇게 하면 총 965초. 한 아티스트당 평균 1초가 넘게 걸림
+    # 어디서 보틀넥이 걸리는 거지? Get Several Artists API를 이용해 볼까. 50개씩 가능
+    # bulk로 update 하는 쿼리하면 빠른가?
 
-    # conn.commit()
+    conn.commit()
 
     print("artists table update complete!")
     print("실행 시간: {}s".format(round(time.time() - start, 1)))
-    # 총 965초. 한 아티스트당 평균 1초가 넘게 걸림
-    # 어디서 보틀넥이 걸리는 거지? Get Several Artists API를 이용해 볼까. 50개씩 가능
-    # bulk로 update 하는 쿼리하면 빠른가?
+    
 
 if __name__=='__main__':
     main()
