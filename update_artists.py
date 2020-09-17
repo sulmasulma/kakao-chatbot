@@ -20,8 +20,8 @@ for key, value in data.items():
     
 def update_row(cursor, data, table, artist_id):
 
-    # data: {"key1": value1, "key2": value2} 형태
-    # sql에는 update할 값이 key=value, key=value, key=value 형태로 들어가야 함
+    # data: {"column1": value1, "column2": value2} 형태
+    # sql에는 update할 값이 column=value, column=value, column=value 형태로 들어가야 함
     values = []
     for k,v in data.items():
         if type(v) == int:
@@ -76,6 +76,27 @@ def main():
 
     headers = get_headers(client_id, client_secret)
 
+    ### fetch random artists 테스트
+    # URL = "https://api.spotify.com/v1/search"
+    # params = {
+    #     'q': 'year:0000-9999',
+    #     'type': 'artist'
+    # }
+
+    # for i in range(5):
+    #     headers = get_headers(client_id, client_secret)
+    #     r = requests.get(URL, params=params, headers=headers)
+    #     raw = json.loads(r.text)
+    #     # print(len(raw['artists']))
+    #     # print(raw['artists'].keys())
+    #     temp = [data['name'] for data in raw['artists']['items']]
+    #     print(len(temp))
+    #     print(temp)
+    #     # break
+    # sys.exit(0)
+
+    ###
+
     # 1. RDS - 아티스트 데이터 가져옴
     cursor.execute("SELECT id FROM artists")
 
@@ -90,7 +111,7 @@ def main():
         part = ids[i:i+50]
 
         # API 쿼리
-        URL = "https://api.spotify.com/v1/artists/"
+        URL = "https://api.spotify.com/v1/artists"
         params = {
             'ids': part
         }
@@ -116,56 +137,13 @@ def main():
 
             update_row(cursor, artist, 'artists', data['id'])
 
-        # 100번째 아티스트까지는 25초 걸림
         print("{}번째 아티스트 업데이트. 실행 시간: {}s".format(i+50, round(time.time() - start, 1)))
-    
-    # 이렇게 하면 총 5초 걸림!!
-
-
-    # for (artist_id, ) in cursor.fetchall():
-    #     i += 1
-    #     URL = "https://api.spotify.com/v1/artists/{}".format(artist_id)
-        
-    #     # Get Several Artists에 필요한 query parameter
-    #     # params = {
-    #     #     'ids': 'US'
-    #     # }
-
-    #     headers = get_headers(client_id, client_secret)
-    #     # r = requests.get(URL, params=params, headers=headers)
-    #     r = requests.get(URL, headers=headers)
-    #     raw = json.loads(r.text)
-
-    #     artist = {}
-    #     artist.update(
-    #         {
-    #             'followers': raw['followers']['total'],
-    #             'popularity': raw['popularity'],
-    #             'url': raw['external_urls']['spotify']
-    #         }
-    #     )
-    #     if raw['images']:
-    #         artist.update(
-    #             {'image_url': raw['images'][0]['url']}
-    #         )
-
-    #     update_row(cursor, artist, 'artists', artist_id)
-
-    #     # 100번째 아티스트까지는 25초 걸림
-    #     if i % 50 == 0:
-    #         print("{}번째 아티스트 업데이트. 실행 시간: {}s".format(i, round(time.time() - start, 1)))
-    #         # break
-    #     if i == 300:
-    #         break # 테스트
-    
-    # 이렇게 하면 총 965초. 한 아티스트당 평균 1초가 넘게 걸림
-    # 어디서 보틀넥이 걸리는 거지? Get Several Artists API를 이용해 볼까. 50개씩 가능
-    # bulk로 update 하는 쿼리하면 빠른가?
 
     conn.commit()
 
     print("artists table update complete!")
     print("실행 시간: {}s".format(round(time.time() - start, 1)))
+    # 총 5초 소요
     
 
 if __name__=='__main__':
