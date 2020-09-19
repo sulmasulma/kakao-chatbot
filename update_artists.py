@@ -113,7 +113,7 @@ def main():
         # API 쿼리
         URL = "https://api.spotify.com/v1/artists"
         params = {
-            'ids': part
+            'ids': ','.join(part) # comma separated 형식으로 주어야 함
         }
 
         headers = get_headers(client_id, client_secret)
@@ -122,6 +122,7 @@ def main():
 
         # 아티스트별로 테이블에 업데이트
         for data in raw:
+
             artist = {}
             artist.update(
                 {
@@ -139,11 +140,12 @@ def main():
 
         print("{}번째 아티스트 업데이트. 실행 시간: {}s".format(i+50, round(time.time() - start, 1)))
 
+
     conn.commit()
 
     print("artists table update complete!")
     print("실행 시간: {}s".format(round(time.time() - start, 1)))
-    # 총 5초 소요
+    # 총 18초 소요
     
 
 if __name__=='__main__':
