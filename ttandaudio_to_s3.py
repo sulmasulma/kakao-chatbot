@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# top_tracks, audio_features 데이터를 매일 s3에 저장하는 코드
+# top_tracks, audio_features 데이터를 매일 s3에 저장하는 스크립트
 import sys, os, logging, time
 import boto3
 import requests
@@ -109,6 +109,7 @@ def main():
                 'artist_id': artist_id,
                 'data': raw
             })
+
         # 프로비전 용량 초과로 오류 나면, 재시도?
         # 이러면 재귀 구문? 근데 여기서 재귀 말고, 일단 모두 요청 보낸 후 top-tracks 람다에서 재귀해야 할 듯
         # 이렇게 하면, StatusCode가 오기 전에 지나가 버려서 그런지, 아래 루프로 들어가지 않음.
@@ -125,7 +126,7 @@ def main():
 
         # print(resp) # 출력하기엔 횟수가 너무 많음
         
-
+    
     # 2-2. json 으로 저장 (연습)
     # top_tracks는 list of dictionary 형태 -> json 데이터 저장하여 S3에 Load
     # with open('top_tracks.json', 'w') as f:
@@ -183,7 +184,7 @@ def main():
     object.put(Body=data)
 
     print("3. audio-features storage completed!")
-    print("실행 시간: {}s".format(round(time.time() - start, 1)))
+    print("실행 시간: {:.1f}s".format(time.time() - start))
 
 
 def get_headers(client_id, client_secret):

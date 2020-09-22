@@ -138,13 +138,13 @@ def main():
 
             update_row(cursor, artist, 'artists', data['id'])
 
-        print("{}번째 아티스트 업데이트. 실행 시간: {}s".format(i+50, round(time.time() - start, 1)))
+        print("{}번째 아티스트 업데이트. 실행 시간: {:.1f}s".format(i+50, time.time() - start))
 
 
     conn.commit()
 
     print("artists table update complete!")
-    print("실행 시간: {}s".format(round(time.time() - start, 1)))
+    print("실행 시간: {:.1f}s".format(time.time() - start))
     # 총 18초 소요
     
 

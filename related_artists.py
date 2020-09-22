@@ -165,6 +165,7 @@ def main():
 
     # 3. 아티스트별 평균 수치 계산. 최근 날짜 데이터 사용
     # 근데 평균으로 하면 잃어버리는 정보가 너무 많은데, 더 좋은 방법 없나? 트랙 각각 수치 살릴 수 있는.
+    # 아니면 아예 아티스트별이 아닌 트랙별 데이터를 사용할 수도 있음.
     query = """
         SELECT
             artist_id,
@@ -249,7 +250,7 @@ def main():
     conn.commit()
     cursor.close()
     print('related_artists 테이블 삽입 완료!')
-    print("실행 시간: {}s".format(round(time.time() - start, 1)))
+    print("실행 시간: {:.1f}s".format(time.time() - start))
 
 
 if __name__ == "__main__":
