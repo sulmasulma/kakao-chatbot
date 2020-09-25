@@ -194,7 +194,6 @@ def translate_artist(korean):
     translator = Translator() # 번역기
     return translator.translate(korean, dest="en").text
 
-
 # 관련 아티스트의 id와 이름 가져오기
 # 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
 def related_artist(artist_id):
@@ -210,6 +209,62 @@ def related_artist(artist_id):
         return cursor.fetchall()
     except:
         return
+
+# SimpleText 메시지
+def simple_text(msg):
+    return {
+        "simpleText": {
+            "text": msg
+        }
+    }
+
+# ListCard 메시지
+def list_card(title, imageUrl, items, webLinkUrl):
+    return {
+        "listCard": {
+            "header": {
+                "title": title,
+                "imageUrl": imageUrl
+            },
+            "items": items,
+            "buttons": [
+                {
+                "label": "다른 노래도 보기",
+                "action": "webLink",
+                "webLinkUrl": webLinkUrl
+                }
+            ]
+        }
+    }
+
+# Carousel (여러 장의 카드 메시지)
+# carousel의 type은 필요하면 수정할 수 있도록, 기본값(현재 listCard)을 넣음
+def carousel(items, card_type = "listCard"):
+    return {
+        "carousel": {
+            "type": card_type,
+            "items": items
+        }
+    }
+
+# 챗봇 메시지
+def message(outputs):
+    return {
+        "version": "2.0",
+        "template": {
+            "outputs": outputs # 여기에 메시지 카드들이 들어감(list로)
+        }
+    }
+
+# 최종 json result
+def json_result(result):
+    return {
+        'statusCode': 200,
+        'body': json.dumps(result),
+        'headers': {
+            'Access-Control-Allow-Origin': '*',
+        }
+    }
 
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
@@ -242,11 +297,7 @@ def search_artist(cursor, artist_name):
 
         if raw['artists']['items'] == []:
             print("없는 아티스트")
-            return [{
-                "simpleText": {
-                    "text": '아티스트를 찾을 수 없습니다. 다시 입력해 주세요.'
-                }
-            }]
+            return [simple_text('아티스트를 찾을 수 없습니다. 다시 입력해 주세요.')]
 
     artist_raw = raw['artists']['items'][0]
     # logger.info(artist_raw)
@@ -299,20 +350,11 @@ def search_artist(cursor, artist_name):
     insert_row(cursor, artist, 'artists')
     conn.commit()
     
-    
     temp = []
-    temp_text = {
-        "simpleText": {
-            "text": "{}의 노래를 들어보세요.".format(artist_raw['name'])
-        }
-    }
+    temp_text = simple_text("{}의 노래를 들어보세요.".format(artist_raw['name']))
     temp.append(temp_text)
 
-    temp_text = {
-        "simpleText": {
-            "text": "아티스트가 추가되었습니다. 처리 시간 동안 기다려주셔서 감사합니다."
-        }
-    }
+    temp_text = simple_text("아티스트가 추가되었습니다. 처리 시간 동안 기다려주셔서 감사합니다.")
     temp.append(temp_text)
 
     # # basic card 내용을 반환하여, lambda_handler 함수에서 응답에 append 할 수 있도록 하기
@@ -352,37 +394,14 @@ def search_artist(cursor, artist_name):
             'search_query': artist_raw['name']
         }
         youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
-        # youtube_url = 'https://www.youtube.com/results?search_query={}'.format(artist_raw['name'].replace(' ', '+'))
-        temp_list = {
-            "listCard": {
-                "header": {
-                    "title": artist_raw['name'],
-                    "imageUrl": temp_artist_url
-                },
-                "items": temp_top_tracks,
-                "buttons": [
-                    {
-                    "label": "다른 노래도 보기",
-                    "action": "webLink",
-                    "webLinkUrl": youtube_url
-                    }
-                ]
-            }
-        }
-
+        temp_list = list_card(artist_raw['name'], temp_artist_url, temp_top_tracks, youtube_url)
         temp.append(temp_list)
 
     else:
-        temp_text = {
-            "simpleText": {
-                "text": "{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(artist_raw['name'])
-            }
-        }
+        temp_text = simple_text("{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(artist_raw['name']))
         temp.append(temp_text)
 
-
     return temp
-
 
 
 def lambda_handler(event, context):
@@ -413,23 +432,8 @@ def lambda_handler(event, context):
         # 새로운 데이터가 추가되었을 경우의 메시지 상태. 기존 데이터를 사용할 경우 아래로 내려감
         if search_result:
             # print("대체 메시지")
-            # print(search_result)
-            result = {
-                "version": "2.0",
-                "template": {
-                    "outputs": search_result
-                }
-            }
-
-            return {
-                'statusCode':200,
-                'body': json.dumps(result),
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                }
-            }
-        # bot.send_text(user_id, text) # 아티스트 없어서 새로 추가하는 작업
-        # sys.exit(0)
+            result = message(search_result)
+            return json_result(result)
     
     logger.info(globals()['raw'])
     artist_id, db_artist_name, image_url = raw[0]
@@ -445,7 +449,7 @@ def lambda_handler(event, context):
     youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
     # youtube_url = 'https://www.youtube.com/results?search_query={}'.format(temp_artist_name.replace(' ', '+'))
 
-    # 장르 가져오기
+    ########## 장르 가져오기 ##########
     # query = """
     #     select t2.genre from artists t1 join artist_genres t2 on t2.artist_id = t1.id
     #     where t1.name = '{}'
@@ -455,6 +459,8 @@ def lambda_handler(event, context):
     # genres = []
     # for (genre, ) in cursor.fetchall():
     #     genres.append(genre)
+
+    ################################
 
     # 메시지 결과 저장하는 변수
     temp = []
@@ -467,27 +473,11 @@ def lambda_handler(event, context):
 
         # 마이크로닷: DB에도 없고 API에도 없음. 안내 메시지 보내고 리턴
         if not temp_top_tracks:
-            temp_text = {
-                "simpleText": {
-                    "text": "{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(temp_artist_name)
-                }
-            }
+            temp_text = simple_text("{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(temp_artist_name))
             temp.append(temp_text)
+            result = message(temp)
 
-            result = {
-                "version": "2.0",
-                "template": {
-                    "outputs": temp
-                }
-            }
-
-            return {
-                'statusCode': 200,
-                'body': json.dumps(result),
-                'headers': {
-                    'Access-Control-Allow-Origin': '*',
-                }
-            }
+            return json_result(result)
 
         # API 결과가 있으면 DB 삽입
         resp = invoke_lambda('top-tracks', payload={
@@ -498,46 +488,19 @@ def lambda_handler(event, context):
         print("top tracks INSERT:", resp)
 
 
-    # 요청받은 아티스트의 카드 (공통)
-    card_this_artist = {
-        "header": {
-            "title": temp_artist_name,
-            "imageUrl": image_url
-        },
-        "items": temp_top_tracks,
-        "buttons": [
-            {
-            "label": "다른 노래도 보기",
-            "action": "webLink",
-            "webLinkUrl": youtube_url
-            }
-        ]
-    }
+    # 요청받은 아티스트의 카드 (관련 아티스트 있는 경우, 없는 경우 공통)
+    carousel_items = []
+    # 해당 아티스트 먼저 넣기
+    card_this_artist = list_card(temp_artist_name, image_url, temp_top_tracks, youtube_url)['listCard']
+    carousel_items.append(card_this_artist)
 
-    # 2. 관련 아티스트가 있을 경우: 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
+    # 1. 관련 아티스트가 저장되어 있을 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
     if related_artist(artist_id):
         # 1. SimpleText
-        temp_text = {
-            "simpleText": {
-                "text": "{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name)
-            }
-        }
+        temp_text = simple_text("{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
 
-        # Carousel: ListCard 여러 개
-        # 관련 아티스트의 id, name 및 top_tracks 가져오기
-        temp_carousel = {
-            "carousel": {
-                "type": "listCard",
-                "items": [
-                ]
-            }
-        }
-
-        # 2-1. 해당 아티스트 먼저 넣기
-        temp_carousel['carousel']['items'].append(card_this_artist)
-
-        # 2-2. 관련 아티스트 3개 넣기
+        # 2. Carousel (관련 아티스트 카드 3개)
         rel_artists = related_artist(artist_id)
         for artist in rel_artists:
             rel_id, rel_name, rel_image_url = artist
@@ -547,63 +510,25 @@ def lambda_handler(event, context):
             }
             youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
 
-            card_rel_artist = {
-                "header": {
-                    "title": rel_name,
-                    "imageUrl": rel_image_url
-                },
-                "items": rel_top_tracks,
-                "buttons": [
-                    {
-                    "label": "다른 노래도 보기",
-                    "action": "webLink",
-                    "webLinkUrl": youtube_url2
-                    }
-                ]
-            }
+            # Carousel에 들어갈 ListCard의 형태는 ListCard만 단독으로 보낼 때보다 한 단계 적음. json의 'listCard' 부분만 사용
+            card_rel_artist = list_card(rel_name, rel_image_url, rel_top_tracks, youtube_url2)['listCard']
+            carousel_items.append(card_rel_artist)
 
-            temp_carousel['carousel']['items'].append(card_rel_artist)
+        temp.append(carousel(carousel_items))
 
-        temp.append(temp_carousel)
-
-    # 관련 아티스트가 아직 저장되어 있지 않은 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트
+    # 2. 관련 아티스트가 아직 저장되어 있지 않을 경우: 안내 메시지 + 요청받은 아티스트
     else:
         # 1. SimpleText
-        temp_text = {
-            "simpleText": {
-                "text": "{}의 노래를 들어보세요.".format(temp_artist_name)
-            }
-        }
+        temp_text = simple_text("{}의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
 
-        # 2. ListCard
-        temp_carousel = {
-            "carousel": {
-                "type": "listCard",
-                "items": [
-                    card_this_artist
-                ]
-            }
-        }
-
+        # 2. Carousel (해당 아티스트 카드 1개)
+        temp_carousel = carousel(card_this_artist)
         temp.append(temp_carousel)
     
 
     # 최종 메시지
-    result = {
-        "version": "2.0",
-        "template": {
-            "outputs": temp
-        }
-    }
-
-    # logger.info(result)
+    result = message(temp)
 
     # 메시지 리턴
-    return {
-        'statusCode':200,
-        'body': json.dumps(result),
-        'headers': {
-            'Access-Control-Allow-Origin': '*',
-        }
-    }
+    return json_result(result)
