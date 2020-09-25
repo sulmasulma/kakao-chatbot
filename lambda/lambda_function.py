@@ -210,6 +210,8 @@ def related_artist(artist_id):
     except:
         return
 
+#### 카카오톡 메시지 타입별 함수 ####
+
 # SimpleText 메시지
 def simple_text(msg):
     return {
@@ -266,6 +268,7 @@ def json_result(result):
         }
     }
 
+##############################
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
 def search_artist(cursor, artist_name):
