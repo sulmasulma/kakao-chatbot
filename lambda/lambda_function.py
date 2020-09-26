@@ -258,7 +258,7 @@ def message(outputs):
         }
     }
 
-# 최종 json result
+# 최종 json response
 def json_result(result):
     return {
         'statusCode': 200,
@@ -438,7 +438,7 @@ def lambda_handler(event, context):
             result = message(search_result)
             return json_result(result)
     
-    logger.info(globals()['raw'])
+    logger.info(globals()['raw']) # 해당 아티스트 MySQL 데이터
     artist_id, db_artist_name, image_url = raw[0]
     temp_artist_name = db_artist_name # 이 변수를 아티스트 이름에 ' 있을 때만 할당할 수는 없나?
 
@@ -450,7 +450,6 @@ def lambda_handler(event, context):
         'search_query': temp_artist_name
     }
     youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
-    # youtube_url = 'https://www.youtube.com/results?search_query={}'.format(temp_artist_name.replace(' ', '+'))
 
     ########## 장르 가져오기 ##########
     # query = """
@@ -479,7 +478,6 @@ def lambda_handler(event, context):
             temp_text = simple_text("{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(temp_artist_name))
             temp.append(temp_text)
             result = message(temp)
-
             return json_result(result)
 
         # API 결과가 있으면 DB 삽입
@@ -491,9 +489,10 @@ def lambda_handler(event, context):
         print("top tracks INSERT:", resp)
 
 
-    # 요청받은 아티스트의 카드 (관련 아티스트 있는 경우, 없는 경우 공통)
+    # 아티스트의 카드들을 Carousel 형태로 보냄
     carousel_items = []
-    # 해당 아티스트 먼저 넣기
+    # 해당 아티스트 먼저 넣기 (관련 아티스트 있는 경우, 없는 경우 공통)
+    # Carousel에 들어갈 ListCard의 형태는 ListCard만 단독으로 보낼 때보다 한 단계 적음. json의 'listCard' 부분만 사용
     card_this_artist = list_card(temp_artist_name, image_url, temp_top_tracks, youtube_url)['listCard']
     carousel_items.append(card_this_artist)
 
@@ -505,6 +504,7 @@ def lambda_handler(event, context):
 
         # 2. Carousel (관련 아티스트 카드 3개)
         rel_artists = related_artist(artist_id)
+        # 아티스트별 카드 추가
         for artist in rel_artists:
             rel_id, rel_name, rel_image_url = artist
             rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
@@ -513,7 +513,6 @@ def lambda_handler(event, context):
             }
             youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
 
-            # Carousel에 들어갈 ListCard의 형태는 ListCard만 단독으로 보낼 때보다 한 단계 적음. json의 'listCard' 부분만 사용
             card_rel_artist = list_card(rel_name, rel_image_url, rel_top_tracks, youtube_url2)['listCard']
             carousel_items.append(card_rel_artist)
 
@@ -533,5 +532,5 @@ def lambda_handler(event, context):
     # 최종 메시지
     result = message(temp)
 
-    # 메시지 리턴
+    # 최종 json response
     return json_result(result)
