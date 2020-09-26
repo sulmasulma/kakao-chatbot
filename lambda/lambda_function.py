@@ -1,19 +1,19 @@
 # 챗봇 메시징 코드
 import sys
-sys.path.append('./libs') # libs 안에 있는 것 사용하도록 configure
+sys.path.append('./libs') # libs 폴더에 들어있는 라이브러리를 사용하도록 configure
 import boto3, pymysql
 from boto3.dynamodb.conditions import Key
 import logging, pickle, requests, json, base64
 from urllib import parse
 from googletrans import Translator
 
-logger = logging.getLogger() # cloudwatch 로그 보기?
+logger = logging.getLogger() # cloudwatch에서 로그 보기
 logger.setLevel(logging.INFO)
 raw = () # db 결과 저장하는 변수
 base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
-# AWS mysql 정보 -> 환경 변수로?
-# 환경변수 사용법 예시: import os 하고 region = os.environ['AWS_REGION']
+# AWS mysql 정보 불러와 전역 변수로 사용
+# 참고: 환경변수로 사용하려면, import os 하고 region = os.environ['AWS_REGION']
 with open('dbinfo.pickle', 'rb') as f:
     data = pickle.load(f)
 
@@ -35,10 +35,8 @@ except:
     logging.error('could not connect to dynamodb')
     sys.exit(1)
 
-# bot = fb_bot.Bot(PAGE_TOKEN)
-
-# main 함수를 호출하는 것이 아니므로, 다른 함수들은 lambda_handler보다 위에 써야 함
-# API 쿼리 위한 header
+# main 함수를 호출하는 것이 아니므로, 다른 함수들은 lambda_handler보다 위에 써야 실행 속돋가 빠름
+# API 접근 권한을 얻기 위해 header 발급하는 함수
 def get_headers(client_id, client_secret):
 
     endpoint = "https://accounts.spotify.com/api/token"
@@ -134,9 +132,8 @@ def get_top_tracks_db(artist_id, artist_name):
         }
 
         youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
-        # youtube_url = 'https://www.youtube.com/results?search_query={}+{}'.format(
-        #     artist_name.replace(' ', '+'), name.replace(' ', '+'))
         
+        # ListCard 형태에 맞게 리턴
         temp_dic = {
             "title": name,
             "description": ele['album']['name'],
@@ -147,8 +144,6 @@ def get_top_tracks_db(artist_id, artist_name):
         }
 
         items.append(temp_dic)
-    
-    # print(items)
 
     return items
 
@@ -174,9 +169,8 @@ def get_top_tracks_api(artist_id, artist_name):
         }
 
         youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
-        # youtube_url = 'https://www.youtube.com/results?search_query={}+{}'.format(
-        #     artist_name.replace(' ', '+'), name.replace(' ', '+'))
         
+        # ListCard 형태에 맞게 리턴
         temp_dic = {
             "title": name,
             "description": ele['album']['name'],
