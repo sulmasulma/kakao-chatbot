@@ -219,8 +219,8 @@ def list_card(title, imageUrl, items, webLinkUrl):
     return {
         "listCard": {
             "header": {
-                "title": title,
-                "imageUrl": imageUrl
+                "title": title
+                # "imageUrl": imageUrl # imageUrl은 제거됨
             },
             "items": items,
             "buttons": [
