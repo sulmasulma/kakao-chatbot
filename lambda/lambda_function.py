@@ -483,20 +483,24 @@ def lambda_handler(event, context):
         print("top tracks INSERT:", resp)
 
 
-    # 아티스트의 카드들을 Carousel 형태로 보냄
-    carousel_items = []
     # 해당 아티스트 먼저 넣기 (관련 아티스트 있는 경우, 없는 경우 공통)
-    # Carousel에 들어갈 ListCard의 형태는 ListCard만 단독으로 보낼 때보다 한 단계 적음. json의 'listCard' 부분만 사용
-    card_this_artist = list_card(temp_artist_name, image_url, temp_top_tracks, youtube_url)['listCard']
-    carousel_items.append(card_this_artist)
+    card_this_artist = list_card(temp_artist_name, image_url, temp_top_tracks, youtube_url)
 
     # 1. 관련 아티스트가 저장되어 있을 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
+    # 이 경우 아티스트의 카드들을 Carousel 형태로 보냄
     if related_artist(artist_id):
         # 1. SimpleText
         temp_text = simple_text("{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
 
-        # 2. Carousel (관련 아티스트 카드 3개)
+        # 2. Carousel (해당 아티스트 + 관련 아티스트 카드 3개)
+        carousel_items = []
+
+        # 해당 아티스트
+        # Carousel에 들어갈 ListCard의 형태는 ListCard만 단독으로 보낼 때보다 한 단계 적음. json의 'listCard' 부분만 사용
+        carousel_items.append(card_this_artist['listCard'])
+
+        # 관련 아티스트
         rel_artists = related_artist(artist_id)
         # 아티스트별 카드 추가
         for artist in rel_artists:
@@ -518,9 +522,9 @@ def lambda_handler(event, context):
         temp_text = simple_text("{}의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
 
-        # 2. Carousel (해당 아티스트 카드 1개)
-        temp_carousel = carousel(card_this_artist)
-        temp.append(temp_carousel)
+        # 2. ListCard (해당 아티스트 카드 1개)
+        temp_list = card_this_artist
+        temp.append(temp_list)
     
 
     # 최종 메시지
