@@ -11,6 +11,6 @@
 - 사용 기술: Python, AWS 서비스 (Lambda, EC2, S3, Athena, MySQL, DynamoDB)
   - AWS 요금 문제로 `EC2`, `MySQL`은 더 이상 사용하지 않습니다. (20210322)
   - 배치 작업은 필요시 GCP 무료 서버를 이용할 예정입니다.
-- [블로그](https://sulmasulma.github.io/data/2020/06/03/kakaotalk-chatbot.html)에 정리해 놓았습니다.
+- [블로그](https://sulmasulma.github.io/data/2020/06/03/kakaotalk-chatbot.html){:target="_blank"}에 정리해 놓았습니다.
 
 챗봇 사용해 보기: https://pf.kakao.com/_xgubvxb
