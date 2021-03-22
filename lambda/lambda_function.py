@@ -5,7 +5,7 @@ import boto3, pymysql
 from boto3.dynamodb.conditions import Key
 import logging, pickle, requests, json, base64
 from urllib import parse
-from googletrans import Translator
+from google_trans_new import google_translator
 
 logger = logging.getLogger() # cloudwatch에서 로그 보기
 logger.setLevel(logging.INFO)
@@ -14,19 +14,19 @@ base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
 # AWS mysql 정보 불러와 전역 변수로 사용
 # 참고: 환경변수로 사용하려면, import os 하고 region = os.environ['AWS_REGION']
-with open('dbinfo.pickle', 'rb') as f:
-    data = pickle.load(f)
+# with open('dbinfo.pickle', 'rb') as f:
+#     data = pickle.load(f)
 
-for key in data.keys():
-    globals()[key] = data[key]
+# for key in data.keys():
+#     globals()[key] = data[key]
 
 # connect MySQL
-try:
-    conn = pymysql.connect(host, user=username, passwd=password, db=database, port=port, use_unicode=True, charset='utf8')
-    cursor = conn.cursor()
-except:
-    logging.error("could not connect to rds")
-    sys.exit(1)
+# try:
+#     conn = pymysql.connect(host, user=username, passwd=password, db=database, port=port, use_unicode=True, charset='utf8')
+#     cursor = conn.cursor()
+# except:
+#     logging.error("could not connect to rds")
+#     sys.exit(1)
 
 # connect DynamoDB
 try:
@@ -61,33 +61,41 @@ def get_headers(client_id, client_secret):
     return headers
 
 # MySQL에 데이터 삽입
-def insert_row(cursor, data, table):
+# def insert_row(cursor, data, table):
 
-    # data의 개수에 맞게 넣어 줌
-    placeholders = ', '.join(['%s'] * len(data)) # 형태: '%s, %s, %s, ...'
-    columns = ', '.join(data.keys())
-    key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
-    # 반복적인 인자들을 %s에 넣어줌
-    sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
+#     # data의 개수에 맞게 넣어 줌
+#     placeholders = ', '.join(['%s'] * len(data)) # 형태: '%s, %s, %s, ...'
+#     columns = ', '.join(data.keys())
+#     key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
+#     # 반복적인 인자들을 %s에 넣어줌
+#     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
 
-    # print(sql) # 아래와 같은 형태
-    """
-    INSERT INTO artists ( id, name, followers, popularity, url, image_url )
-    VALUES ( %s, %s, %s, %s, %s, %s )
-    ON DUPLICATE KEY UPDATE id=values(id), name=values(name), followers=values(followers),
-    popularity=values(popularity), url=values(url), image_url=values(image_url)
-    """
+#     # print(sql) # 아래와 같은 형태
+#     """
+#     INSERT INTO artists ( id, name, followers, popularity, url, image_url )
+#     VALUES ( %s, %s, %s, %s, %s, %s )
+#     ON DUPLICATE KEY UPDATE id=values(id), name=values(name), followers=values(followers),
+#     popularity=values(popularity), url=values(url), image_url=values(image_url)
+#     """
 
-    cursor.execute(sql, list(data.values()))
-    # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
-    # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯.
-    # print(data.values())
+#     cursor.execute(sql, list(data.values()))
+#     # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
+#     # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯.
+#     # print(data.values())
+
+
+# DynamoDB에 데이터 삽입
+def insert_dynamo(data, table):
+    table = dynamodb.Table(table)
+    table.put_item(
+        Item=data # artists: id, name, followers, popularity, url, image_url
+    )
+
 
 # 다른 람다를 호출(invoke)하는 함수. payload 부분이 event로 들어가는 부분
 # IAM을 통해 이 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
-# invocation_type = 'Event' -> 비동기!!
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
-    # invocation_type: 동기식으로 하려면 RequestResponse
+    # invocation_type -> 'Event': 비동기, 'RequestResponse': 동기
     lambda_client = boto3.client('lambda')
     invoke_response = lambda_client.invoke(
         FunctionName = fxn_name,
@@ -185,24 +193,67 @@ def get_top_tracks_api(artist_id, artist_name):
 
 # 해외 아티스트를 한국어로 검색했을 때 결과가 나오지 않을 경우, 영어로 번역해서 다시 검색 시도
 def translate_artist(korean):
-    translator = Translator() # 번역기
-    return translator.translate(korean, dest="en").text
+    translator = google_translator()
+    return translator.translate(korean, lang_tgt="en")
 
 # 관련 아티스트의 id와 이름 가져오기
 # 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
-def related_artist(artist_id):
+# def related_artist(artist_id):
+#     try:
+#         # 쿼리 해석해 보기
+#         query = """
+#             select t1.y_artist, t2.name, t2.image_url from related_artists t1
+#             join artists t2 on t1.y_artist = t2.id
+#             where t1.artist_id = '{}' order by t1.distance
+#             limit 3
+#         """.format(artist_id)
+#         # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
+#         cursor.execute(query)
+#         return cursor.fetchall()
+#     except:
+#         return
+
+
+# dynamodb용 related_artist 함수 만들기
+# 역시 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우([]을 리턴할 경우) return
+def get_related_artists_dynamo(artist_id):
     try:
-        query = """
-            select t1.y_artist, t2.name, t2.image_url from related_artists t1
-            join artists t2 on t1.y_artist = t2.id
-            where t1.artist_id = '{}' order by t1.distance
-            limit 3
-        """.format(artist_id)
-        # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
-        cursor.execute(query)
-        return cursor.fetchall()
+        table = dynamodb.Table('related_artists')
+        response = table.query(
+            KeyConditionExpression=Key('artist_id').eq(artist_id)
+        )
+        
+        data = sorted(response['Items'], key = lambda x: float(x['distance']))[:3] # 거리 가장 작은 3개 결과 리턴
+        ids = [a['y_artist'] for a in data]
+
+        return ids
     except:
         return
+
+
+# dynamodb는 join이 안 되기 때문에, related_artist 함수와 달리 artist 데이터를 따로 호출해야 함
+def get_artist(artist_id):
+    table = dynamodb.Table('artists')
+    response = table.query(
+        KeyConditionExpression=Key('id').eq(artist_id)
+    )
+
+    return response['Items'][0]
+
+
+# 이름으로 아티스트 찾기
+def get_artist_by_name(name):
+    try:
+        table = dynamodb.Table('artists')
+        response = table.query(
+            IndexName="name-index", # gsi(global secondary index) 사용
+            KeyConditionExpression=Key('name_lower').eq(name.lower()) # 영어 대문자는 소문자로 변환한 key로 검색
+        )
+
+        return response['Items'][0] # 이건 검색될 경우에만 [0] 붙여 리턴할 데이터로 사용
+    except:
+        return # 결과 없으면 response['Items'][0]에서 오류가 남. 이 경우 return
+
 
 #### 카카오톡 메시지 타입별 함수 ####
 
@@ -265,7 +316,7 @@ def json_result(result):
 ##############################
 
 # 검색어와 DB에 있는 아티스트 이름이 일치하지 않을 경우, API에서 검색하는 함수
-def search_artist(cursor, artist_name):
+def search_artist(artist_name):
 
     headers = get_headers(client_id, client_secret) # id, secret은 globals()로 생성
 
@@ -282,6 +333,7 @@ def search_artist(cursor, artist_name):
     # 검색 결과가 없을 경우, ['artists']['items']가 empty list - []가 됨
     # 검색 단어와 저장 단어가 다를 경우, DB에는 있음. 이 데이터를 주면 됨
     if raw['artists']['items'] == []:
+        print("번역 후 다시 시도")
         # 번역해서 다시 검색해 보고, 있으면 넘어가기. 그래도 없으면 리턴
         params = {
             "q": translate_artist(artist_name), # 여기를 번역 결과로!! 함수 만들어서
@@ -300,12 +352,17 @@ def search_artist(cursor, artist_name):
     # logger.info(artist_raw)
 
     # 검색 결과가 DB에 있는지 테스트함. 이미 있으면 나가야 함
-    query = 'select id, name, image_url from artists where name = "{}"'.format(artist_raw['name'])
-    logger.info(query) # 수정된 쿼리
-    cursor.execute(query)
-    db_result = cursor.fetchall()
+
+    # 구) mysql 용
+    # query = 'select id, name, image_url from artists where name = "{}"'.format(artist_raw['name'])
+    # logger.info(query)
+    # cursor.execute(query)
+    # db_result = cursor.fetchall()
+
+    # 신) dynamodb 용
+    db_result = get_artist_by_name(artist_raw['name'])
     
-    if len(db_result) > 0: # 이미 있는 데이터면, DB 데이터를 저장하고 나감
+    if db_result: # 이미 있는 데이터면, 전역 변수로 DB 데이터를 저장하고 나감. 전역 변수는 lambda_handler()에서 사용
         print("이미 있는 데이터 가져오기")
         globals()['raw'] = db_result
         # global raw 하고 raw = db_result 하고 싶은데, 함수를 실행하기도 전에, 할당 전에 사용했다는 오류 발생
@@ -329,6 +386,7 @@ def search_artist(cursor, artist_name):
         {
             'id': artist_raw['id'],
             'name': artist_raw['name'],
+            'name_lower': artist_raw['name'].lower(),
             'followers': artist_raw['followers']['total'],
             'popularity': artist_raw['popularity'],
             'url': artist_raw['external_urls']['spotify'],
@@ -339,13 +397,21 @@ def search_artist(cursor, artist_name):
     
     # 아티스트가 있는데 장르가 없는 경우도 있음(예: Andrew W.K.). 이 경우는 장르는 따로 처리하지 않음
     # 장르가 있을 경우, artist_genres 테이블 먼저 insert
-    if len(artist_raw['genres']) != 0:
-        for i in artist_raw['genres']:
-            insert_row(cursor, {'artist_id': artist_raw['id'], 'genre': i}, 'artist_genres')
+
+    # 210321 수정: 장르 테이블 dynamodb에는 없음. 장르는 신경쓰지 말기. 추후 artists 테이블에 삽입?
+    # if len(artist_raw['genres']) != 0:
+    #     for i in artist_raw['genres']:
+    #         insert_row(cursor, {'artist_id': artist_raw['id'], 'genre': i}, 'artist_genres')
 
     # 이제 artists 테이블 insert
-    insert_row(cursor, artist, 'artists')
-    conn.commit()
+
+    # 구) mysql 용
+    # insert_row(cursor, artist, 'artists')
+    # conn.commit()
+
+    # 신) dynamodb 용
+    # DynamoDB artists 테이블에 데이터 삽입
+    insert_dynamo(artist, 'artists')
     
     temp = []
     temp_text = simple_text("{}의 노래를 들어보세요.".format(artist_raw['name']))
@@ -417,14 +483,18 @@ def lambda_handler(event, context):
 
 	# input 으로 받아온 데이터로 원하는 결과를 생성하는 코드 작성
     # url을 먼저 가져와서 있으면 아티스트 정보를 보여주고 장르로 넘어가고, 없으면 에러 처리
-    query = 'select id, name, image_url from artists where name = "{}"'.format(artist_name) # 원래는 url 칼럼도 담았었는데, spotify link 사용할거 아니므로 뺌
-    logger.info(query)
-    cursor.execute(query)
-    globals()['raw'] = cursor.fetchall()
+    # query = 'select id, name, image_url from artists where name = "{}"'.format(artist_name) # 원래는 url 칼럼도 담았었는데, spotify link 사용할거 아니므로 뺌
+    # logger.info(query)
+    # cursor.execute(query)
+    # globals()['raw'] = cursor.fetchall()
+
+    # 210321 dynamodb로 변경
+    globals()['raw'] = get_artist_by_name(artist_name)
 
     # 아티스트가 DB에 없을 경우 DB에 추가하는 작업
-    if len(raw) == 0:
-        search_result = search_artist(cursor, artist_name) # 새로운 데이터 db에 저장할 때 안내 메시지 띄움
+    # if len(raw) == 0:
+    if not raw:
+        search_result = search_artist(artist_name) # 새로운 데이터 db에 저장할 때 안내 메시지 띄움
 
         # 새로운 데이터가 추가되었을 경우의 메시지 상태. 기존 데이터를 사용할 경우 아래로 내려감
         if search_result:
@@ -432,8 +502,17 @@ def lambda_handler(event, context):
             result = message(search_result)
             return json_result(result)
     
-    logger.info(globals()['raw']) # 해당 아티스트 MySQL 데이터
-    artist_id, db_artist_name, image_url = raw[0]
+    logger.info(globals()['raw']) # 해당 아티스트 DB 데이터
+    
+    # 구) mysql 용
+    # artist_id, db_artist_name, image_url = raw[0] 
+
+    # 신) dynamodb 용
+    # print("raw:", raw)
+    artist_id = raw['id']
+    db_artist_name = raw['name']
+    image_url = raw['image_url']
+
     temp_artist_name = db_artist_name # 이 변수를 아티스트 이름에 ' 있을 때만 할당할 수는 없나?
 
     # sql 쿼리를 위해, Girls' Generation같이 이름에 '가 들어가면 ''로 수정하여 쿼리 가능하게 함
@@ -488,7 +567,8 @@ def lambda_handler(event, context):
 
     # 1. 관련 아티스트가 저장되어 있을 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
     # 이 경우 아티스트의 카드들을 Carousel 형태로 보냄
-    if related_artist(artist_id):
+    # if related_artist(artist_id):
+    if get_related_artists_dynamo(artist_id):  
         # 1. SimpleText
         temp_text = simple_text("{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
@@ -501,10 +581,16 @@ def lambda_handler(event, context):
         carousel_items.append(card_this_artist['listCard'])
 
         # 관련 아티스트
-        rel_artists = related_artist(artist_id)
+        # rel_artists = related_artist(artist_id)
+        rel_artists = get_related_artists_dynamo(artist_id)
         # 아티스트별 카드 추가
         for artist in rel_artists:
-            rel_id, rel_name, rel_image_url = artist
+            ####### dynamodb에 맞게 rel_id, rel_name, rel_image_url 가져오기
+            temp_artist = get_artist(artist)
+            rel_id = temp_artist['id']
+            rel_name = temp_artist['name']
+            rel_image_url = temp_artist['image_url']
+            # rel_id, rel_name, rel_image_url = artist # 이건 mysql 기준
             rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
             query2 = {
                 'search_query': rel_name
