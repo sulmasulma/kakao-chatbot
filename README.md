@@ -9,7 +9,7 @@
 - 번외
   - `update_artists.py`: MySQL의 artists 테이블 업데이트. 챗봇에 사용되는 데이터는 아니지만, 아티스트의 최신화된 popularity, 팔로워 수 파악하기 위한 용도
 - 사용 기술: Python, AWS 서비스 (Lambda, EC2, S3, Athena, MySQL, DynamoDB)
-  - AWS 요금 문제로, `EC2`, `MySQL`은 더 이상 사용하지 않습니다. (20210322)
+  - AWS 요금 문제로 `EC2`, `MySQL`은 더 이상 사용하지 않습니다. (20210322)
   - 배치 작업은 필요시 GCP 무료 서버를 이용할 예정입니다.
 - [블로그](https://sulmasulma.github.io/data/2020/06/03/kakaotalk-chatbot.html)에 정리해 놓았습니다.
 
