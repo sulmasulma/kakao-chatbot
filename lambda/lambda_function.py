@@ -5,7 +5,7 @@ import boto3, pymysql
 from boto3.dynamodb.conditions import Key
 import logging, pickle, requests, json, base64
 from urllib import parse
-from google_trans_new import google_translator
+from googletrans import Translator
 
 logger = logging.getLogger() # cloudwatch에서 로그 보기
 logger.setLevel(logging.INFO)
@@ -14,11 +14,11 @@ base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
 # AWS mysql 정보 불러와 전역 변수로 사용
 # 참고: 환경변수로 사용하려면, import os 하고 region = os.environ['AWS_REGION']
-# with open('dbinfo.pickle', 'rb') as f:
-#     data = pickle.load(f)
+with open('dbinfo.pickle', 'rb') as f:
+    data = pickle.load(f)
 
-# for key in data.keys():
-#     globals()[key] = data[key]
+for key in data.keys():
+    globals()[key] = data[key]
 
 # connect MySQL
 # try:
@@ -193,8 +193,8 @@ def get_top_tracks_api(artist_id, artist_name):
 
 # 해외 아티스트를 한국어로 검색했을 때 결과가 나오지 않을 경우, 영어로 번역해서 다시 검색 시도
 def translate_artist(korean):
-    translator = google_translator()
-    return translator.translate(korean, lang_tgt="en")
+    translator = Translator()
+    return translator.translate(korean, dest="en").text
 
 # 관련 아티스트의 id와 이름 가져오기
 # 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
