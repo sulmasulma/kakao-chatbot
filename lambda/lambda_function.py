@@ -2,7 +2,6 @@
 import sys
 sys.path.append('./libs') # libs 폴더에 들어있는 라이브러리를 사용하도록 configure
 import boto3, pymysql
-from boto3.dynamodb.conditions import Key
 import logging, pickle, requests, json, base64
 from urllib import parse
 from googletrans import Translator
@@ -14,28 +13,30 @@ base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
 # AWS mysql 정보 불러와 전역 변수로 사용
 # 참고: 환경변수로 사용하려면, import os 하고 region = os.environ['AWS_REGION']
-with open('dbinfo.pickle', 'rb') as f:
-    data = pickle.load(f)
+with open('dbinfo_kakao.pickle', 'rb') as f:
+    dbinfo = pickle.load(f)
 
-for key in data.keys():
-    globals()[key] = data[key]
+# API account info
+client_id = dbinfo['client_id']
+client_secret = dbinfo['client_secret']
 
 # connect MySQL
-# try:
-#     conn = pymysql.connect(host, user=username, passwd=password, db=database, port=port, use_unicode=True, charset='utf8')
-#     cursor = conn.cursor()
-# except:
-#     logging.error("could not connect to rds")
-#     sys.exit(1)
-
-# connect DynamoDB
 try:
-    dynamodb = boto3.resource('dynamodb', region_name='ap-northeast-2', endpoint_url='http://dynamodb.ap-northeast-2.amazonaws.com')
+    conn = pymysql.connect(
+        host=dbinfo['host'],
+        user=dbinfo['username'],
+        passwd=dbinfo['password'],
+        db=dbinfo['database'],
+        port=dbinfo['port'],
+        use_unicode=True, charset='utf8'
+    )
+    cursor = conn.cursor()
 except:
-    logging.error('could not connect to dynamodb')
+    logging.error("could not connect to rds")
     sys.exit(1)
 
-# main 함수를 호출하는 것이 아니므로, 다른 함수들은 lambda_handler보다 위에 써야 실행 속돋가 빠름
+
+# main 함수를 호출하는 것이 아니므로, 다른 함수들은 lambda_handler보다 위에 써야 실행 속도가 빠름
 # API 접근 권한을 얻기 위해 header 발급하는 함수
 def get_headers(client_id, client_secret):
 
@@ -61,35 +62,27 @@ def get_headers(client_id, client_secret):
     return headers
 
 # MySQL에 데이터 삽입
-# def insert_row(cursor, data, table):
+def insert_row(cursor, data, table):
 
-#     # data의 개수에 맞게 넣어 줌
-#     placeholders = ', '.join(['%s'] * len(data)) # 형태: '%s, %s, %s, ...'
-#     columns = ', '.join(data.keys())
-#     key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
-#     # 반복적인 인자들을 %s에 넣어줌
-#     sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
+    # data의 개수에 맞게 넣어 줌
+    placeholders = ', '.join(['%s'] * len(data)) # 형태: '%s, %s, %s, ...'
+    columns = ', '.join(data.keys())
+    key_placeholders = ', '.join(['{0}=values({0})'.format(k) for k in data.keys()])
+    # 반복적인 인자들을 %s에 넣어줌
+    sql = "INSERT INTO %s ( %s ) VALUES ( %s ) ON DUPLICATE KEY UPDATE %s" % (table, columns, placeholders, key_placeholders)
 
-#     # print(sql) # 아래와 같은 형태
-#     """
-#     INSERT INTO artists ( id, name, followers, popularity, url, image_url )
-#     VALUES ( %s, %s, %s, %s, %s, %s )
-#     ON DUPLICATE KEY UPDATE id=values(id), name=values(name), followers=values(followers),
-#     popularity=values(popularity), url=values(url), image_url=values(image_url)
-#     """
+    # print(sql) # 아래와 같은 형태
+    """
+    INSERT INTO artists ( id, name, followers, popularity, url, image_url )
+    VALUES ( %s, %s, %s, %s, %s, %s )
+    ON DUPLICATE KEY UPDATE id=values(id), name=values(name), followers=values(followers),
+    popularity=values(popularity), url=values(url), image_url=values(image_url)
+    """
 
-#     cursor.execute(sql, list(data.values()))
-#     # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
-#     # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯.
-#     # print(data.values())
+    cursor.execute(sql, list(data.values()))
+    # 여기서 list(data.values()) 말고 그냥 data.values() 하면 오류 남: 'dict_values' object has no attribute 'translate'
+    # cursor.execute 안에 넣을 수 없는 데이터 형식(dict_values)인 듯
 
-
-# DynamoDB에 데이터 삽입
-def insert_dynamo(data, table):
-    table = dynamodb.Table(table)
-    table.put_item(
-        Item=data # artists: id, name, followers, popularity, url, image_url
-    )
 
 
 # 다른 람다를 호출(invoke)하는 함수. payload 부분이 event로 들어가는 부분
@@ -105,35 +98,24 @@ def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
 
     if invoke_response['StatusCode'] not in [200, 202, 204]:
         logging.error('ERROR: Invoking lambda function: {} failed'.format(fxn_name))
-    # invoke_response 형식 예시. StatusCode가 202 -> 비동기 응답
-    # {'ResponseMetadata': {
-    #     'RequestId': '9c43412b-4eae-4334-9072-846d296430c7', 
-    #     'HTTPStatusCode': 202, 
-    #     'HTTPHeaders': {
-    #         'date': 'Fri, 12 Jun 2020 14:56:44 GMT', 'content-length': '0', 'connection': 'keep-alive',
-    #         'x-amzn-requestid': '9c43412b-4eae-4334-9072-846d296430c7', 'x-amzn-remapped-content-length': '0', 
-    #         'x-amzn-trace-id': 'root=1-5ee397ac-b822719b1f62900344f882ed;sampled=0'}, 
-    #     'RetryAttempts': 0}, 
-    # 'StatusCode': 202, 
-    # 'Payload': <botocore.response.StreamingBody object at 0x7fbe6f4bd350>
-    # }
 
     return invoke_response
 
-# DynamoDB에서 top_tracks 데이터 호출하는 함수. ListCard 형태에 맞게 리턴
+
+# DB에서 top_tracks 데이터 호출. ListCard 형태에 맞게 리턴
 def get_top_tracks_db(artist_id, artist_name):
+    # 결과를 popularity 내림차순 정렬 (아티스트별 3개씩 있음)
+    sql = "select * from top_tracks where artist_id = '{}' order by popularity desc".format(artist_id)
+    cursor.execute(sql)
+    cols = [ele[0] for ele in cursor.description]
+    res = cursor.fetchall()
+    db_res = []
+    for track in res:
+        db_res.append({k:v for k,v in zip(cols, track)})
 
-    table = dynamodb.Table('top_tracks')
-    response = table.query(
-        KeyConditionExpression=Key('artist_id').eq(artist_id)
-    )
-    # 결과를 popularity 내림차순 정렬하여, 상위 3개 보여 줌
-    # api 결과는 popularity 내림차순으로 나오므로, DB 결과만 정렬하면 됨
-    response['Items'].sort(key=lambda x: x['popularity'], reverse=True)
-
+    # output 형태에 맞게 변형
     items = []
-
-    for ele in response['Items'][:3]:
+    for ele in db_res[:3]:
         name = ele['name']
         query = {
             'search_query': '{} {}'.format(artist_name, name)
@@ -144,8 +126,8 @@ def get_top_tracks_db(artist_id, artist_name):
         # ListCard 형태에 맞게 리턴
         temp_dic = {
             "title": name,
-            "description": ele['album']['name'],
-            "imageUrl": ele['album']['images'][1]['url'],
+            "description": ele['album_name'],
+            "imageUrl": ele['image_url'],
             "link": {
                 "web": youtube_url
             }
@@ -154,6 +136,7 @@ def get_top_tracks_db(artist_id, artist_name):
         items.append(temp_dic)
 
     return items
+
 
 # API에서 top_tracks 호출하는 함수. ListCard 형태에 맞게 리턴
 def get_top_tracks_api(artist_id, artist_name):
@@ -165,7 +148,7 @@ def get_top_tracks_api(artist_id, artist_name):
     headers = get_headers(client_id, client_secret)
     r = requests.get(URL, params=params, headers=headers)
     raw = json.loads(r.text)
-    globals()['data_for_dynamodb'] = raw
+    globals()['data_for_mysql'] = raw
 
     items = []
 
@@ -196,63 +179,42 @@ def translate_artist(korean):
     translator = Translator()
     return translator.translate(korean, dest="en").text
 
+
 # 관련 아티스트의 id와 이름 가져오기
 # 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
-# def related_artist(artist_id):
-#     try:
-#         # 쿼리 해석해 보기
-#         query = """
-#             select t1.y_artist, t2.name, t2.image_url from related_artists t1
-#             join artists t2 on t1.y_artist = t2.id
-#             where t1.artist_id = '{}' order by t1.distance
-#             limit 3
-#         """.format(artist_id)
-#         # query = 'select y_artist from related_artists where artist_id="{}"'.format(artist_id)
-#         cursor.execute(query)
-#         return cursor.fetchall()
-#     except:
-#         return
-
-
-# dynamodb용 related_artist 함수 만들기
-# 역시 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우([]을 리턴할 경우) return
-def get_related_artists_dynamo(artist_id):
+def get_related_artists_db(artist_id):
     try:
-        table = dynamodb.Table('related_artists')
-        response = table.query(
-            KeyConditionExpression=Key('artist_id').eq(artist_id)
-        )
-        
-        data = sorted(response['Items'], key = lambda x: float(x['distance']))[:3] # 거리 가장 작은 3개 결과 리턴
-        ids = [a['y_artist'] for a in data]
-
-        return ids
+        sql = "select related_id from related_artists where artist_id = '{}' order by rank_rel limit 3".format(artist_id)
+        cursor.execute(sql)
+        res = [ele[0] for ele in cursor.fetchall()] # id 목록만 리턴
+        return res
     except:
         return
 
 
-# dynamodb는 join이 안 되기 때문에, related_artist 함수와 달리 artist 데이터를 따로 호출해야 함
 def get_artist(artist_id):
-    table = dynamodb.Table('artists')
-    response = table.query(
-        KeyConditionExpression=Key('id').eq(artist_id)
-    )
+    try:
+        sql = "select * from artists where id = '{}'".format(artist_id)
+        cursor.execute(sql)
+        res = cursor.fetchall()[0]
+        cols = [ele[0] for ele in cursor.description]
 
-    return response['Items'][0]
+        return {k:v for k,v in zip(cols, res)}
+    except:
+        return # 결과 없으면 cursor.fetchall()[0] 에서 오류가 남. 이 경우 return
 
 
-# 이름으로 아티스트 찾기
 def get_artist_by_name(name):
     try:
-        table = dynamodb.Table('artists')
-        response = table.query(
-            IndexName="name-index", # gsi(global secondary index) 사용
-            KeyConditionExpression=Key('name_lower').eq(name.lower()) # 영어 대문자는 소문자로 변환한 key로 검색
-        )
-
-        return response['Items'][0] # 이건 검색될 경우에만 [0] 붙여 리턴할 데이터로 사용
+        # like 검색 말고 = 검색 먼저 해야 하나?
+        sql = "select * from artists where name = '{}'".format(name)
+        cursor.execute(sql)
+        res = cursor.fetchall()[0]
+        cols = [ele[0] for ele in cursor.description]
+        
+        return {k:v for k,v in zip(cols, res)}
     except:
-        return # 결과 없으면 response['Items'][0]에서 오류가 남. 이 경우 return
+        return # 결과 없으면 cursor.fetchall()[0] 에서 오류가 남. 이 경우 return
 
 
 #### 카카오톡 메시지 타입별 함수 ####
@@ -319,6 +281,7 @@ def json_result(result):
 def search_artist(artist_name):
 
     headers = get_headers(client_id, client_secret) # id, secret은 globals()로 생성
+    raw = {} # 번역 후 다시 시도할 때를 위해, 껍데기 변수 만들어 두기
 
     ## Spotify Search API
     params = {
@@ -352,15 +315,8 @@ def search_artist(artist_name):
     # logger.info(artist_raw)
 
     # 검색 결과가 DB에 있는지 테스트함. 이미 있으면 나가야 함
-
-    # 구) mysql 용
-    # query = 'select id, name, image_url from artists where name = "{}"'.format(artist_raw['name'])
-    # logger.info(query)
-    # cursor.execute(query)
-    # db_result = cursor.fetchall()
-
-    # 신) dynamodb 용
-    db_result = get_artist_by_name(artist_raw['name'])
+    # db_result = get_artist_by_name(artist_raw['name'])
+    db_result = get_artist(artist_raw['id'])
     
     if db_result: # 이미 있는 데이터면, 전역 변수로 DB 데이터를 저장하고 나감. 전역 변수는 lambda_handler()에서 사용
         print("이미 있는 데이터 가져오기")
@@ -386,7 +342,6 @@ def search_artist(artist_name):
         {
             'id': artist_raw['id'],
             'name': artist_raw['name'],
-            'name_lower': artist_raw['name'].lower(),
             'followers': artist_raw['followers']['total'],
             'popularity': artist_raw['popularity'],
             'url': artist_raw['external_urls']['spotify'],
@@ -394,24 +349,10 @@ def search_artist(artist_name):
         }
     )
     
-    
-    # 아티스트가 있는데 장르가 없는 경우도 있음(예: Andrew W.K.). 이 경우는 장르는 따로 처리하지 않음
-    # 장르가 있을 경우, artist_genres 테이블 먼저 insert
 
-    # 210321 수정: 장르 테이블 dynamodb에는 없음. 장르는 신경쓰지 말기. 추후 artists 테이블에 삽입?
-    # if len(artist_raw['genres']) != 0:
-    #     for i in artist_raw['genres']:
-    #         insert_row(cursor, {'artist_id': artist_raw['id'], 'genre': i}, 'artist_genres')
-
-    # 이제 artists 테이블 insert
-
-    # 구) mysql 용
-    # insert_row(cursor, artist, 'artists')
-    # conn.commit()
-
-    # 신) dynamodb 용
-    # DynamoDB artists 테이블에 데이터 삽입
-    insert_dynamo(artist, 'artists')
+    # 이제 artists 테이블에 insert
+    insert_row(cursor, artist, 'artists')
+    conn.commit()
     
     temp = []
     temp_text = simple_text("{}의 노래를 들어보세요.".format(artist_raw['name']))
@@ -443,12 +384,12 @@ def search_artist(artist_name):
  
     temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
     
-    # top_tracks 데이터가 있을 경우에만 DynamoDB의 top-tracks 테이블에 insert
+    # top_tracks 데이터가 있을 경우에만 mysql의 top-tracks 테이블에 insert
     if temp_top_tracks:
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': artist_raw['name'], # 로그 용도로 이름까지 보냄
             'artist_id': artist_raw['id'],
-            'data': globals()['data_for_dynamodb']
+            'data': globals()['data_for_mysql']
         })
         # 응답 결과: 해당 람다에서 리턴한 값이 아니라, 아래와 같이 찍힘
         # print("top tracks INSERT:", resp)
@@ -480,19 +421,9 @@ def lambda_handler(event, context):
 
     # 메시지는 뒤에 \n이 붙어서, 제거
     artist_name = request_body['userRequest']['utterance'].rstrip("\n")
-
-	# input 으로 받아온 데이터로 원하는 결과를 생성하는 코드 작성
-    # url을 먼저 가져와서 있으면 아티스트 정보를 보여주고 장르로 넘어가고, 없으면 에러 처리
-    # query = 'select id, name, image_url from artists where name = "{}"'.format(artist_name) # 원래는 url 칼럼도 담았었는데, spotify link 사용할거 아니므로 뺌
-    # logger.info(query)
-    # cursor.execute(query)
-    # globals()['raw'] = cursor.fetchall()
-
-    # 210321 dynamodb로 변경
     globals()['raw'] = get_artist_by_name(artist_name)
 
-    # 아티스트가 DB에 없을 경우 DB에 추가하는 작업
-    # if len(raw) == 0:
+    # 아티스트가 DB에 없을 경우, API에서 찾은 뒤 DB에 추가
     if not raw:
         search_result = search_artist(artist_name) # 새로운 데이터 db에 저장할 때 안내 메시지 띄움
 
@@ -504,17 +435,12 @@ def lambda_handler(event, context):
     
     logger.info(globals()['raw']) # 해당 아티스트 DB 데이터
     
-    # 구) mysql 용
-    # artist_id, db_artist_name, image_url = raw[0] 
-
-    # 신) dynamodb 용
-    # print("raw:", raw)
+    # 
     artist_id = raw['id']
     db_artist_name = raw['name']
     image_url = raw['image_url']
 
-    temp_artist_name = db_artist_name # 이 변수를 아티스트 이름에 ' 있을 때만 할당할 수는 없나?
-
+    temp_artist_name = db_artist_name
     # sql 쿼리를 위해, Girls' Generation같이 이름에 '가 들어가면 ''로 수정하여 쿼리 가능하게 함
     if "'" in db_artist_name:
         db_artist_name = db_artist_name.replace("'", "''")
@@ -524,23 +450,12 @@ def lambda_handler(event, context):
     }
     youtube_url = base_url + parse.urlencode(query, encoding='UTF-8', doseq=True)
 
-    ########## 장르 가져오기 ##########
-    # query = """
-    #     select t2.genre from artists t1 join artist_genres t2 on t2.artist_id = t1.id
-    #     where t1.name = '{}'
-    # """.format(db_artist_name)
-    # cursor.execute(query)
 
-    # genres = []
-    # for (genre, ) in cursor.fetchall():
-    #     genres.append(genre)
-
-    ################################
-
-    # 메시지 결과 저장하는 변수
+    ####################
+    # 메시지 결과 저장
     temp = []
 
-    # top tracks 데이터가 DynamoDB에 없는 아티스트가 있음. 처음에 MySQL에 추가할 때 같이 삽입이 되지 않은 듯.
+    # top tracks 데이터가 DB에 없는 아티스트가 있음. 처음에 MySQL에 추가할 때 같이 삽입이 되지 않은 듯.
     # 확인하고 없으면 데이터 삽입
     temp_top_tracks = get_top_tracks_db(artist_id, temp_artist_name)
     if not temp_top_tracks:
@@ -557,7 +472,7 @@ def lambda_handler(event, context):
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': db_artist_name, # 로그 용도로 이름까지 보냄
             'artist_id': artist_id,
-            'data': globals()['data_for_dynamodb']
+            'data': globals()['data_for_mysql']
         })
         print("top tracks INSERT:", resp)
 
@@ -567,8 +482,9 @@ def lambda_handler(event, context):
 
     # 1. 관련 아티스트가 저장되어 있을 경우(매일 밤 배치 처리를 통해 저장): 안내 메시지 + 요청받은 아티스트 + 관련 아티스트
     # 이 경우 아티스트의 카드들을 Carousel 형태로 보냄
-    # if related_artist(artist_id):
-    if get_related_artists_dynamo(artist_id):  
+    rel_artists = get_related_artists_db(artist_id)
+
+    if rel_artists:
         # 1. SimpleText
         temp_text = simple_text("{} + 관련 아티스트들의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
@@ -581,29 +497,29 @@ def lambda_handler(event, context):
         carousel_items.append(card_this_artist['listCard'])
 
         # 관련 아티스트
-        # rel_artists = related_artist(artist_id)
-        rel_artists = get_related_artists_dynamo(artist_id)
         # 아티스트별 카드 추가
         for artist in rel_artists:
-            ####### dynamodb에 맞게 rel_id, rel_name, rel_image_url 가져오기
             temp_artist = get_artist(artist)
-            rel_id = temp_artist['id']
-            rel_name = temp_artist['name']
-            rel_image_url = temp_artist['image_url']
-            # rel_id, rel_name, rel_image_url = artist # 이건 mysql 기준
-            rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
-            query2 = {
-                'search_query': rel_name
-            }
-            youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
+            if temp_artist: # 관련 아티스트가 있을 경우에만. 근데 related_artists 적재시 artists 테이블에 없으면 그것도 적재 필요
+                rel_id = temp_artist['id']
+                rel_name = temp_artist['name']
+                rel_image_url = temp_artist['image_url']
+                # rel_id, rel_name, rel_image_url = artist # 이건 mysql 기준
+                rel_top_tracks = get_top_tracks_db(rel_id, rel_name)
+                query2 = {
+                    'search_query': rel_name
+                }
+                youtube_url2 = base_url + parse.urlencode(query2, encoding='UTF-8', doseq=True)
 
-            card_rel_artist = list_card(rel_name, rel_image_url, rel_top_tracks, youtube_url2)['listCard']
-            carousel_items.append(card_rel_artist)
+                card_rel_artist = list_card(rel_name, rel_image_url, rel_top_tracks, youtube_url2)['listCard']
+                carousel_items.append(card_rel_artist)
 
         temp.append(carousel(carousel_items))
 
     # 2. 관련 아티스트가 아직 저장되어 있지 않을 경우: 안내 메시지 + 요청받은 아티스트
     else:
+        print('관련 아티스트 아직 없음')
+        
         # 1. SimpleText
         temp_text = simple_text("{}의 노래를 들어보세요.".format(temp_artist_name))
         temp.append(temp_text)
@@ -611,6 +527,11 @@ def lambda_handler(event, context):
         # 2. ListCard (해당 아티스트 카드 1개)
         temp_list = card_this_artist
         temp.append(temp_list)
+
+        # related_artists 저장. id만 보내기
+        # resp = invoke_lambda('related-artists', payload={
+        #     'artist_id': artist_id
+        # })
     
 
     # 최종 메시지
