@@ -287,6 +287,7 @@ def search_artist(artist_name):
     params = {
         "q": artist_name,
         "type": "artist",
+        "market": "KR", # 한국 기준으로 검색 (ISO 3166-1 alpha-2 country code)
         "limit": "1"
     }
 
@@ -301,6 +302,7 @@ def search_artist(artist_name):
         params = {
             "q": translate_artist(artist_name), # 여기를 번역 결과로!! 함수 만들어서
             "type": "artist",
+            "market": "KR", # 한국 기준으로 검색
             "limit": "1"
         }
 
