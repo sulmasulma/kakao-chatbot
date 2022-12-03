@@ -382,10 +382,10 @@ def search_artist(artist_name):
 
     # temp.append(temp_card)
  
+    # top_tracks 데이터가 있을 경우에만 mysql의 top_tracks 테이블에 insert
     temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
-    
-    # top_tracks 데이터가 있을 경우에만 mysql의 top-tracks 테이블에 insert
     if temp_top_tracks:
+        print('top tracks 저장')
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': artist_raw['name'], # 로그 용도로 이름까지 보냄
             'artist_id': artist_raw['id'],
@@ -404,6 +404,13 @@ def search_artist(artist_name):
     else:
         temp_text = simple_text("{}의 노래가 없습니다. 한국어로 검색하셨다면, 영어로도 검색해 보세요.".format(artist_raw['name']))
         temp.append(temp_text)
+
+
+    # related_artists 처리
+    print('related artists 저장')
+    resp = invoke_lambda('related-artists', payload={
+        'artist_id': artist_raw['id']
+    })
 
     return temp
 
@@ -529,9 +536,11 @@ def lambda_handler(event, context):
         temp.append(temp_list)
 
         # related_artists 저장. id만 보내기
-        # resp = invoke_lambda('related-artists', payload={
-        #     'artist_id': artist_id
-        # })
+        print('related artists 저장')
+        resp = invoke_lambda('related-artists', payload={
+            'artist_id': artist_id
+        })
+        # print("related artists INSERT:", resp)
     
 
     # 최종 메시지
