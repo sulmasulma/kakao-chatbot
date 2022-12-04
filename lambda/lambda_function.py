@@ -411,7 +411,8 @@ def search_artist(artist_name):
     # related_artists 처리
     print('related artists 저장')
     resp = invoke_lambda('related-artists', payload={
-        'artist_id': artist_raw['id']
+        'artist_id': artist_raw['id'],
+        'artist_name': artist_raw['name']
     })
 
     return temp
@@ -540,7 +541,8 @@ def lambda_handler(event, context):
         # related_artists 저장. id만 보내기
         print('related artists 저장')
         resp = invoke_lambda('related-artists', payload={
-            'artist_id': artist_id
+            'artist_id': artist_id,
+            'artist_name': temp_artist_name
         })
         # print("related artists INSERT:", resp)
     
