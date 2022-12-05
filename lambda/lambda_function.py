@@ -184,7 +184,13 @@ def translate_artist(korean):
 # 해당 아티스트의 관련 아티스트가 아직 저장되지 않은 경우 return
 def get_related_artists_db(artist_id):
     try:
-        sql = "select related_id from related_artists where artist_id = '{}' order by rank_rel limit 3".format(artist_id)
+        # 이걸 db상 3순위 말고, 탑트랙이 있는 3순위로 하는게 좋을듯 mark
+        # sql = "select related_id from related_artists where artist_id = '{}' order by rank_rel limit 3".format(artist_id)
+        sql = """
+            SELECT DISTINCT A.RELATED_ID, A.RANK_REL FROM RELATED_ARTISTS A
+            INNER JOIN TOP_TRACKS B ON A.RELATED_ID = B.ARTIST_ID WHERE A.ARTIST_ID = '{}'
+            ORDER BY A.RANK_REL LIMIT 3
+        """.format(artist_id)
         cursor.execute(sql)
         res = [ele[0] for ele in cursor.fetchall()] # id 목록만 리턴
         return res
