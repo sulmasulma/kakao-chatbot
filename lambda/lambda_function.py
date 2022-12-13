@@ -9,6 +9,7 @@ from googletrans import Translator
 logger = logging.getLogger() # cloudwatch에서 로그 보기
 logger.setLevel(logging.INFO)
 raw = () # db 결과 저장하는 변수
+data_for_mysql = ()
 base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
 # AWS mysql 정보 불러와 전역 변수로 사용
@@ -86,7 +87,7 @@ def insert_row(cursor, data, table):
 
 
 # 다른 람다를 호출(invoke)하는 함수. payload 부분이 event로 들어가는 부분
-# IAM을 통해 이 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
+# IAM을 통해 해당 lambda function에 AWSLambdaFullAccess 권한을 주어야 함
 def invoke_lambda(fxn_name, payload, invocation_type = 'Event'):
     # invocation_type -> 'Event': 비동기, 'RequestResponse': 동기
     lambda_client = boto3.client('lambda')
@@ -148,7 +149,9 @@ def get_top_tracks_api(artist_id, artist_name):
     headers = get_headers(client_id, client_secret)
     r = requests.get(URL, params=params, headers=headers)
     raw = json.loads(r.text)
-    globals()['data_for_mysql'] = raw
+    # globals()['data_for_mysql'] = raw
+    global data_for_mysql
+    data_for_mysql = raw
 
     items = []
 
@@ -177,7 +180,9 @@ def get_top_tracks_api(artist_id, artist_name):
 # 해외 아티스트를 한국어로 검색했을 때 결과가 나오지 않을 경우, 영어로 번역해서 다시 검색 시도
 def translate_artist(korean):
     translator = Translator()
-    return translator.translate(korean, dest="en").text
+    result = translator.translate(korean, dest="en").text
+    print('{}을 {}로 번역'.format(korean, result))
+    return result
 
 
 # 관련 아티스트의 id와 이름 가져오기
@@ -394,10 +399,12 @@ def search_artist(artist_name):
     temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
     if temp_top_tracks:
         print('top tracks 저장')
+        # global data_for_mysql
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': artist_raw['name'], # 로그 용도로 이름까지 보냄
             'artist_id': artist_raw['id'],
-            'data': globals()['data_for_mysql']
+            # 'data': globals()['data_for_mysql']
+            'data': data_for_mysql
         })
         # 응답 결과: 해당 람다에서 리턴한 값이 아니라, 아래와 같이 찍힘
         # print("top tracks INSERT:", resp)
@@ -427,7 +434,7 @@ def search_artist(artist_name):
 def lambda_handler(event, context):
 
     request_body = json.loads(event['body'])
-    # user_id = request_body['userRequest']['user']['id'] # user id. 추후 필요시 사용하기
+    # user_id = request_body['userRequest']['user']['id'] # user id. 추후 필요시 사용하기. 메시지 보내줄때 사용?
     logger.info(request_body)
     params = request_body['action']['params'] # 오픈빌더는 action > params 안에 input 데이터가 들어있다.
     if params:
@@ -437,7 +444,9 @@ def lambda_handler(event, context):
 
     # 메시지는 뒤에 \n이 붙어서, 제거
     artist_name = request_body['userRequest']['utterance'].rstrip("\n")
-    globals()['raw'] = get_artist_by_name(artist_name)
+    # globals()['raw'] = get_artist_by_name(artist_name)
+    global raw
+    raw = get_artist_by_name(artist_name)
 
     # 아티스트가 DB에 없을 경우, API에서 찾은 뒤 DB에 추가
     if not raw:
@@ -449,7 +458,7 @@ def lambda_handler(event, context):
             result = message(search_result)
             return json_result(result)
     
-    logger.info(globals()['raw']) # 해당 아티스트 DB 데이터
+    # logger.info(globals()['raw']) # 해당 아티스트 DB 데이터
     
     # 
     artist_id = raw['id']
@@ -488,7 +497,8 @@ def lambda_handler(event, context):
         resp = invoke_lambda('top-tracks', payload={
             'artist_name': db_artist_name, # 로그 용도로 이름까지 보냄
             'artist_id': artist_id,
-            'data': globals()['data_for_mysql']
+            # 'data': globals()['data_for_mysql']
+            'data': data_for_mysql
         })
         print("top tracks INSERT:", resp)
 
