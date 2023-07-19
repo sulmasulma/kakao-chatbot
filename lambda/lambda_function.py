@@ -12,8 +12,7 @@ raw = () # db 결과 저장하는 변수
 data_for_mysql = ()
 base_url = "https://www.youtube.com/results?" # YouTube 검색 결과 링크
 
-# AWS mysql 정보 불러와 전역 변수로 사용
-# 참고: 환경변수로 사용하려면, import os 하고 region = os.environ['AWS_REGION']
+# 계정 정보
 with open('dbinfo_kakao.pickle', 'rb') as f:
     dbinfo = pickle.load(f)
 
@@ -33,7 +32,7 @@ try:
     )
     cursor = conn.cursor()
 except:
-    logging.error("could not connect to rds")
+    logging.error("could not connect to mysql")
     sys.exit(1)
 
 
@@ -367,35 +366,15 @@ def search_artist(artist_name):
     insert_row(cursor, artist, 'artists')
     conn.commit()
     
+    # 메시지 내용
     temp = []
     temp_text = simple_text("{}의 노래를 들어보세요.".format(artist_raw['name']))
     temp.append(temp_text)
 
     temp_text = simple_text("아티스트가 추가되었습니다. 처리 시간 동안 기다려주셔서 감사합니다.")
     temp.append(temp_text)
-
-    # # basic card 내용을 반환하여, lambda_handler 함수에서 응답에 append 할 수 있도록 하기
-    # # db에 저장한걸 또 cursor로 가져오지 말고, 여기서는 api 결과를 사용
-    # temp_card = {
-    #     "basicCard": {
-    #         "title": artist_raw['name'],
-    #         "description": ", ".join(artist_raw['genres']), # 여기에 장르 담기
-    #         "thumbnail": {
-    #             "imageUrl": temp_artist_url
-    #         },
-    #         "buttons": [
-    #             {
-    #                 "action": "webLink",
-    #                 "label": "YouTube에서 듣기", # label은 최대 8자
-    #                 "webLinkUrl": youtube_url
-    #             },
-    #         ]
-    #     }
-    # }
-
-    # temp.append(temp_card)
  
-    # top_tracks 데이터가 있을 경우에만 mysql의 top_tracks 테이블에 insert
+    # top_tracks 데이터가 있을 경우 mysql의 top_tracks 테이블에 insert
     temp_top_tracks = get_top_tracks_api(artist_raw['id'], artist_raw['name'])
     if temp_top_tracks:
         print('top tracks 저장')
